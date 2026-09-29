@@ -3,22 +3,27 @@ package main
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 	"os"
 	"os/signal"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cli"
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/logging"
 )
 
-// main installs the redacting logger, wires Ctrl-C cancellation into the
-// command context, and runs the command tree.
+// main installs the file-backed redacting logger, wires Ctrl-C cancellation
+// into the command context, and runs the command tree. Logs land exclusively
+// in the state directory; stdout carries only command results.
 func main() {
-	slog.SetDefault(slog.New(session.NewRedactingHandler(
-		slog.NewTextHandler(os.Stderr, nil))))
+	closeLog, err := logging.Setup()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, `{"error":"logging_unavailable","hint":%q}`+"\n", err.Error())
+		os.Exit(1)
+	}
+	defer closeLog()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	os.Exit(cli.Execute(ctx, os.Args[1:], os.Stderr))
+	os.Exit(cli.Execute(ctx, os.Args[1:], os.Stdout, os.Stderr))
 }

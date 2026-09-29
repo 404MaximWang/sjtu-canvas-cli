@@ -3,11 +3,14 @@ module github.com/404MaximWang/sjtu-canvas-cli
 go 1.26.7
 
 require (
+	github.com/ergochat/readline v0.1.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/net v0.59.0
 	golang.org/x/term v0.46.0
+	mvdan.cc/sh/v3 v3.14.1
 )
 
 require (
@@ -16,5 +19,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
