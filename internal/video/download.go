@@ -210,7 +210,7 @@ func downloadRanged(ctx context.Context, size int64, fetch RangeFetcher, dst io.
 		errMu.Unlock()
 	}
 
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		segBegin := int64(i) * segSize
 		segEnd := segBegin + segSize - 1
 		if segEnd > size-1 {
