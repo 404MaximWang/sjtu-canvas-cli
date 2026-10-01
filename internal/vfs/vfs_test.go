@@ -104,7 +104,7 @@ func newTestFS() *FS {
 		},
 		contents: map[int64]string{7001: "hello", 7002: "ppt!"},
 	}
-	fsys := New(context.Background(), src)
+	fsys := New(context.Background(), src, nil)
 	fsys.now = func() time.Time { return time.Date(2025, 10, 1, 0, 0, 0, 0, time.UTC) }
 	return fsys
 }

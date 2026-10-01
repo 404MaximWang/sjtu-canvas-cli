@@ -94,6 +94,8 @@ func (f *FS) listCourseDir(courseID int64) ([]node, error) {
 		dirNode("attendance", listEmpty),
 		dirNode("discussions", f.listDiscussions(courseID)),
 		dirNode("files", f.listFilesRoot(courseID)),
+		dirNode("live", f.listLive(courseID)),
+		dirNode("replay", f.listReplay(courseID)),
 	}, nil
 }
 

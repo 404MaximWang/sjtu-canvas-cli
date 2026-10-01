@@ -18,6 +18,7 @@ import (
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/vfs"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
 
 // newFsCmd builds one of the three filesystem verbs; they differ only in the
@@ -97,7 +98,76 @@ func openVFS(ctx context.Context, lenient bool) (*vfs.FS, *canvas.Client, bool, 
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return vfs.New(ctx, src), client, tokenSet, nil
+	return vfs.New(ctx, src, openVideoSource(store)), client, tokenSet, nil
+}
+
+// openVideoSource builds the video source from the stored JAAuthCookie.
+// Without one the source stays present but answers every call with a
+// structured auth error, so replay/ and live/ explain themselves instead
+// of vanishing from the tree.
+func openVideoSource(store cred.Store) vfs.VideoSource {
+	cookie, err := getCredential(store, cred.KeyJAccount)
+	if err != nil {
+		return videoAuthSource{}
+	}
+	sess, err := session.NewCookies()
+	if err != nil {
+		return videoAuthSource{}
+	}
+	sess.SeedCookie("JAAuthCookie", cookie, "jaccount.sjtu.edu.cn", "my.sjtu.edu.cn")
+	return video.New(sess)
+}
+
+// videoAuthSource is the VideoSource used when no JAAuthCookie is stored.
+type videoAuthSource struct{}
+
+// errVideoAuth is the single answer of videoAuthSource; it classifies as
+// auth_required with a jaccount-specific hint.
+var errVideoAuth = fail("auth_required", "video features need a jAccount session; run sjtu auth jaccount login", exitAuth)
+
+// Replays reports the missing-credential error.
+func (videoAuthSource) Replays(context.Context, int64) ([]video.Replay, error) {
+	return nil, errVideoAuth
+}
+
+// ReplayViews reports the missing-credential error.
+func (videoAuthSource) ReplayViews(context.Context, int64, int64) ([]video.View, error) {
+	return nil, errVideoAuth
+}
+
+// Subtitle reports the missing-credential error.
+func (videoAuthSource) Subtitle(context.Context, int64, int64) (json.RawMessage, error) {
+	return nil, errVideoAuth
+}
+
+// Summary reports the missing-credential error.
+func (videoAuthSource) Summary(context.Context, int64, int64) (json.RawMessage, error) {
+	return nil, errVideoAuth
+}
+
+// LiveSessions reports the missing-credential error.
+func (videoAuthSource) LiveSessions(context.Context, int64) ([]video.LiveSession, error) {
+	return nil, errVideoAuth
+}
+
+// LiveChannels reports the missing-credential error.
+func (videoAuthSource) LiveChannels(context.Context, int64, int64) ([]video.LiveChannel, error) {
+	return nil, errVideoAuth
+}
+
+// OpenMedia reports the missing-credential error.
+func (videoAuthSource) OpenMedia(context.Context, string) (io.ReadCloser, error) {
+	return nil, errVideoAuth
+}
+
+// ProbeMedia reports the missing-credential error.
+func (videoAuthSource) ProbeMedia(context.Context, string) (int64, bool, error) {
+	return 0, false, errVideoAuth
+}
+
+// FetchRange reports the missing-credential error.
+func (videoAuthSource) FetchRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	return nil, errVideoAuth
 }
 
 // fsName converts an absolute display path ("/courses/12345") to an io/fs

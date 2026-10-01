@@ -15,6 +15,12 @@
 //	/courses/<courseID>/assignments/<id>/   one directory per assignment:
 //	                                        info plus submissions/latest
 //	/courses/<courseID>/attendance/         placeholder, empty this phase
+//	/courses/<courseID>/replay/<videoID>/   one directory per recording: info,
+//	                                        url, subtitle, summary projections
+//	                                        plus one video-N byte node per view
+//	/courses/<courseID>/replay/<MM-DD>-<N>  symlink → replay/<videoID>
+//	/courses/<courseID>/live/<sessionID>/   one directory per live session:
+//	                                        info plus one .flv URL file per channel
 //	/courses/<term>/<courseID>              symlink → /courses/<courseID>
 //	/courses/<term>/<courseName>            symlink → /courses/<term>/<courseID>
 //	/courses/current                        symlink → the current term directory
@@ -122,31 +128,35 @@ var (
 // Source on first access; an FS is cheap to build and safe to use from one
 // goroutine at a time.
 type FS struct {
-	ctx context.Context // bounds every fetch triggered by Open/ReadDir
-	src Source
-	now func() time.Time // clock for the current-term rule; tests may stub
+	ctx   context.Context // bounds every fetch triggered by Open/ReadDir
+	src   Source
+	video VideoSource      // nil leaves replay/ and live/ empty
+	now   func() time.Time // clock for the current-term rule; tests may stub
 }
 
-// New builds an FS over src. ctx bounds every Canvas fetch the file system
-// triggers, so Ctrl-C cancellation reaches in-flight directory listings.
-func New(ctx context.Context, src Source) *FS {
-	return &FS{ctx: ctx, src: src, now: time.Now}
+// New builds an FS over src, with video backing the replay/live subtrees
+// (nil disables them). ctx bounds every fetch the file system triggers, so
+// Ctrl-C cancellation reaches in-flight directory listings.
+func New(ctx context.Context, src Source, video VideoSource) *FS {
+	return &FS{ctx: ctx, src: src, video: video, now: time.Now}
 }
 
 // node is one resolved path: a directory, a JSON entity file, a remote
 // Canvas file, or a symbolic link. Exactly one of the payload fields is
 // active, selected by mode's type bits.
 type node struct {
-	name    string                 // base name as shown in directory listings
-	mode    fs.FileMode            // type bits plus permissions
-	size    int64                  // regular-file content length; symlink target length
-	modTime time.Time              // parsed from the entity's updated_at, else zero
-	target  string                 // symlink destination, anchored at the fs root
-	data    []byte                 // JSON entity file content
-	file    *canvas.File           // remote Canvas file
-	list    func() ([]node, error) // directory child loader
-	entries []node                 // loaded children, sorted by name
-	loaded  bool                   // whether list has run
+	name    string                        // base name as shown in directory listings
+	mode    fs.FileMode                   // type bits plus permissions
+	size    int64                         // regular-file content length; symlink target length
+	modTime time.Time                     // parsed from the entity's updated_at, else zero
+	target  string                        // symlink destination, anchored at the fs root
+	data    []byte                        // JSON entity file content
+	file    *canvas.File                  // remote Canvas file
+	open    func() (io.ReadCloser, error) // dynamic content file (video projections, media)
+	ranged  RangeFetch                    // ranged-download capability of a media node
+	list    func() ([]node, error)        // directory child loader
+	entries []node                        // loaded children, sorted by name
+	loaded  bool                          // whether list has run
 }
 
 // children returns the directory's entries, loading them on first use.
@@ -312,6 +322,12 @@ func (f *FS) Open(name string) (fs.File, error) {
 		return &openFile{node: n, path: name}, nil
 	case n.file != nil:
 		rc, err := f.src.OpenFile(f.ctx, *n.file)
+		if err != nil {
+			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+		}
+		return &openFile{node: n, path: name, remote: rc}, nil
+	case n.open != nil:
+		rc, err := n.open()
 		if err != nil {
 			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
 		}
