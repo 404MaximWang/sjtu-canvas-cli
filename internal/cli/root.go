@@ -21,6 +21,7 @@ import (
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
 
 // Exit codes, per the output contract.
@@ -73,6 +74,9 @@ func classify(err error) *apiError {
 	var httpErr *session.HTTPError
 	if errors.As(err, &httpErr) && strings.HasPrefix(httpErr.Status, "401") {
 		return fail("auth_failed", "Canvas credential invalid or expired; run sjtu auth canvas login to log in again", exitAuth)
+	}
+	if errors.Is(err, video.ErrAuth) {
+		return fail("auth_required", err.Error(), exitAuth)
 	}
 	if errors.Is(err, cred.ErrNotFound) {
 		return fail("auth_required", "not logged in; run sjtu auth canvas login first", exitAuth)
