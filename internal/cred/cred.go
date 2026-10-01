@@ -87,4 +87,3 @@ func (keyringStore) Delete(key string) error {
 
 // Backend names this backend for status output.
 func (keyringStore) Backend() string { return "keyring" }
-

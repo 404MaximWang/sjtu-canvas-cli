@@ -64,7 +64,6 @@ type loginMessage struct {
 	} `json:"payload"`
 }
 
-
 // Login runs the QR-code login flow and returns the issued JAAuthCookie.
 // onQR is invoked with the scannable URL each time the server rotates the QR
 // signature; the caller decides how to render it. ctx bounds the whole flow
