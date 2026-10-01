@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -100,5 +103,59 @@ func TestCacheCorruptRefetch(t *testing.T) {
 	}
 	if len(courses) != 1 || src.courseCalls != 1 {
 		t.Errorf("courses = %v, calls = %d; want 1 course from 1 fetch", courses, src.courseCalls)
+	}
+}
+
+// TestWriteCacheFileConcurrent pins the atomicity contract: concurrent
+// writers to the same key may disagree on content, but the file must always
+// hold exactly one complete document — never a torn interleave — and no
+// temp file may leak.
+func TestWriteCacheFileConcurrent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "k.json")
+
+	blob := func(g int) []byte {
+		return []byte(`{"writer":` + strconv.Itoa(g) + `,"pad":"` + strings.Repeat("x", 1<<16) + `"}`)
+	}
+	var wg sync.WaitGroup
+	for g := range 8 {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for range 30 {
+				if err := writeCacheFile(path, blob(g)); err != nil {
+					t.Errorf("writeCacheFile: %v", err)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	var doc struct {
+		Writer int    `json:"writer"`
+		Pad    string `json:"pad"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("torn cache file: %v", err)
+	}
+	if doc.Writer < 0 || doc.Writer > 7 || len(doc.Pad) != 1<<16 {
+		t.Fatalf("content is no single writer's blob: writer=%d pad=%d", doc.Writer, len(doc.Pad))
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "k.json" {
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Fatalf("temp files leaked: %v", names)
 	}
 }

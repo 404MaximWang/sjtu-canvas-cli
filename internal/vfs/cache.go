@@ -106,10 +106,30 @@ func cached[T any](ctx context.Context, cs *CachedSource, key string, ttl time.D
 	if err != nil {
 		return result, fmt.Errorf("marshal envelope for %s: %w", key, err)
 	}
-	if err := os.WriteFile(path, blob, 0o600); err != nil {
+	if err := writeCacheFile(path, blob); err != nil {
 		slog.Warn("cache write failed", "key", key, "error", err)
 	}
 	return result, nil
+}
+
+// writeCacheFile atomically replaces the cache envelope via temp file plus
+// rename: concurrent writers (goroutines in one daemon, or a CLI racing the
+// daemon) must never leave a torn half-JSON file behind. Last writer wins;
+// the loser's temp file is removed by the deferred cleanup.
+func writeCacheFile(path string, blob []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(blob); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // Courses implements Source with the long TTL tier.
