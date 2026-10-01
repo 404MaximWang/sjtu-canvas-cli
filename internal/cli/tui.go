@@ -27,7 +27,7 @@ import (
 
 // Banner lines, Debian login-banner style. Bump the version per phase.
 const (
-	versionLine  = "CanvasFS 0.2 (built 2026-09-24 UTC)"
+	versionLine  = "CanvasFS 0.3 (built 2026-10-01 UTC)"
 	warrantyLine = "CanvasFS comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law."
 )
 
@@ -127,8 +127,21 @@ func runTUI(ctx context.Context, stderr io.Writer) error {
 			if err := runFS(fsys, args[0], target, true, os.Stdout); err != nil {
 				reportHumanError(stderr, err)
 			}
+		case "download":
+			if len(args) < 2 || len(args) > 3 {
+				reportHumanError(stderr, fail("usage", "download <vfs-path> [local-path]", exitUsage))
+				continue
+			}
+			local := ""
+			if len(args) == 3 {
+				// local relative paths resolve against the process cwd, not the vfs cwd.
+				local = args[2]
+			}
+			if err := runDownload(ctx, fsys, resolvePath(cwd, args[1]), local, true, os.Stdout, stderr); err != nil {
+				reportHumanError(stderr, err)
+			}
 		default:
-			reportHumanError(stderr, fail("usage", "unknown command "+args[0]+"; available: ls stat cat cd pwd exit", exitUsage))
+			reportHumanError(stderr, fail("usage", "unknown command "+args[0]+"; available: ls stat cat download cd pwd exit", exitUsage))
 		}
 	}
 }
