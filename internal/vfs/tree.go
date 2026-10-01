@@ -91,17 +91,13 @@ func (f *FS) listCourseDir(courseID int64) ([]node, error) {
 	return []node{
 		dirNode("announcements", f.listAnnouncements(courseID)),
 		dirNode("assignments", f.listAssignments(courseID)),
-		dirNode("attendance", listEmpty),
+		dirNode("attendance", f.listAttendance(courseID)),
 		dirNode("discussions", f.listDiscussions(courseID)),
 		dirNode("files", f.listFilesRoot(courseID)),
 		dirNode("live", f.listLive(courseID)),
 		dirNode("replay", f.listReplay(courseID)),
 	}, nil
 }
-
-// listEmpty is the child loader of placeholder directories: always empty,
-// never an error.
-func listEmpty() ([]node, error) { return nil, nil }
 
 // listAnnouncements builds one entity directory per announcement.
 func (f *FS) listAnnouncements(courseID int64) func() ([]node, error) {

@@ -14,7 +14,8 @@
 //	/courses/<courseID>/files/              the course's native file tree
 //	/courses/<courseID>/assignments/<id>/   one directory per assignment:
 //	                                        info plus submissions/latest
-//	/courses/<courseID>/attendance/         placeholder, empty this phase
+//	/courses/<courseID>/attendance/         status, current and records
+//	                                        projections (TTL=0 realtime)
 //	/courses/<courseID>/replay/<videoID>/   one directory per recording: info,
 //	                                        url, subtitle, summary projections
 //	                                        plus one video-N byte node per view
@@ -128,17 +129,19 @@ var (
 // Source on first access; an FS is cheap to build and safe to use from one
 // goroutine at a time.
 type FS struct {
-	ctx   context.Context // bounds every fetch triggered by Open/ReadDir
-	src   Source
-	video VideoSource      // nil leaves replay/ and live/ empty
-	now   func() time.Time // clock for the current-term rule; tests may stub
+	ctx        context.Context // bounds every fetch triggered by Open/ReadDir
+	src        Source
+	video      VideoSource      // nil leaves replay/ and live/ empty
+	attendance AttendanceSource // nil leaves attendance/ empty
+	now        func() time.Time // clock for the current-term rule; tests may stub
 }
 
 // New builds an FS over src, with video backing the replay/live subtrees
-// (nil disables them). ctx bounds every fetch the file system triggers, so
-// Ctrl-C cancellation reaches in-flight directory listings.
-func New(ctx context.Context, src Source, video VideoSource) *FS {
-	return &FS{ctx: ctx, src: src, video: video, now: time.Now}
+// and attendance backing the attendance subtree (nil disables either). ctx
+// bounds every fetch the file system triggers, so Ctrl-C cancellation
+// reaches in-flight directory listings.
+func New(ctx context.Context, src Source, video VideoSource, attendance AttendanceSource) *FS {
+	return &FS{ctx: ctx, src: src, video: video, attendance: attendance, now: time.Now}
 }
 
 // node is one resolved path: a directory, a JSON entity file, a remote

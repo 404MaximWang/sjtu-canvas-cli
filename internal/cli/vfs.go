@@ -16,6 +16,7 @@ import (
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/canvas"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/config"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/mlearning"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/vfs"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
@@ -98,24 +99,44 @@ func openVFS(ctx context.Context, lenient bool) (*vfs.FS, *canvas.Client, bool, 
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return vfs.New(ctx, src, openVideoSource(store)), client, tokenSet, nil
+	sess := openJAccountSession(store)
+	return vfs.New(ctx, src, openVideoSource(sess), openAttendanceSource(sess)), client, tokenSet, nil
 }
 
-// openVideoSource builds the video source from the stored JAAuthCookie.
-// Without one the source stays present but answers every call with a
-// structured auth error, so replay/ and live/ explain themselves instead
-// of vanishing from the tree.
-func openVideoSource(store cred.Store) vfs.VideoSource {
+// openJAccountSession builds one cookie session carrying the stored
+// JAAuthCookie, shared by the jAccount-backed sources (video, attendance).
+// It returns nil when no usable credential exists.
+func openJAccountSession(store cred.Store) *session.Session {
 	cookie, err := getCredential(store, cred.KeyJAccount)
 	if err != nil {
-		return videoAuthSource{}
+		return nil
 	}
 	sess, err := session.NewCookies()
 	if err != nil {
-		return videoAuthSource{}
+		return nil
 	}
 	sess.SeedCookie("JAAuthCookie", cookie, "jaccount.sjtu.edu.cn", "my.sjtu.edu.cn")
+	return sess
+}
+
+// openVideoSource builds the video source over the jAccount session. A nil
+// session keeps the source present but answering every call with a
+// structured auth error, so replay/ and live/ explain themselves instead
+// of vanishing from the tree.
+func openVideoSource(sess *session.Session) vfs.VideoSource {
+	if sess == nil {
+		return videoAuthSource{}
+	}
 	return video.New(sess)
+}
+
+// openAttendanceSource builds the attendance source over the jAccount
+// session, with the same missing-credential stub policy as video.
+func openAttendanceSource(sess *session.Session) vfs.AttendanceSource {
+	if sess == nil {
+		return attendanceAuthSource{}
+	}
+	return mlearning.New(sess)
 }
 
 // videoAuthSource is the VideoSource used when no JAAuthCookie is stored.
@@ -168,6 +189,29 @@ func (videoAuthSource) ProbeMedia(context.Context, string) (int64, bool, error) 
 // FetchRange reports the missing-credential error.
 func (videoAuthSource) FetchRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
 	return nil, errVideoAuth
+}
+
+// attendanceAuthSource is the AttendanceSource used when no JAAuthCookie
+// is stored; it mirrors videoAuthSource.
+type attendanceAuthSource struct{}
+
+// errAttendanceAuth is the single answer of attendanceAuthSource; it
+// classifies as auth_required with a jaccount-specific hint.
+var errAttendanceAuth = fail("auth_required", "attendance features need a jAccount session; run sjtu auth jaccount login", exitAuth)
+
+// Status reports the missing-credential error.
+func (attendanceAuthSource) Status(context.Context, int64) (json.RawMessage, error) {
+	return nil, errAttendanceAuth
+}
+
+// Current reports the missing-credential error.
+func (attendanceAuthSource) Current(context.Context, int64) (json.RawMessage, error) {
+	return nil, errAttendanceAuth
+}
+
+// Records reports the missing-credential error.
+func (attendanceAuthSource) Records(context.Context, int64) (json.RawMessage, error) {
+	return nil, errAttendanceAuth
 }
 
 // fsName converts an absolute display path ("/courses/12345") to an io/fs

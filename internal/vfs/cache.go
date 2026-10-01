@@ -15,7 +15,8 @@ import (
 
 // Cache TTL tiers. Course membership changes rarely; assignments,
 // announcements and discussions change daily; file trees sit in between.
-// Attendance is a static placeholder this phase and is never cached.
+// Attendance projections are TTL=0 realtime: they bypass this cache
+// entirely and fetch on every open.
 const (
 	// TTLCourses caches the course list.
 	TTLCourses = 24 * time.Hour

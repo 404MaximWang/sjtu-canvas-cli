@@ -108,7 +108,7 @@ func newVideoTestFS() *FS {
 				{Name: "东上院312老师/课件", URL: "https://live.example/b.flv?auth_key=k2"},
 			},
 		},
-	})
+	}, nil)
 	return fsys
 }
 
@@ -286,7 +286,7 @@ func TestLiveTree(t *testing.T) {
 // TestVideoNilSource pins that video stays absent when the FS has no
 // VideoSource, with zero behavior change for the rest of the tree.
 func TestVideoNilSource(t *testing.T) {
-	fsys := New(context.Background(), &fakeSource{courses: []canvas.Course{{ID: 10001}}}, nil)
+	fsys := New(context.Background(), &fakeSource{courses: []canvas.Course{{ID: 10001}}}, nil, nil)
 	for _, dir := range []string{"courses/10001/replay", "courses/10001/live"} {
 		entries, err := fs.ReadDir(fsys, dir)
 		if err != nil || len(entries) != 0 {
@@ -319,7 +319,7 @@ func TestVideoFSCompliance(t *testing.T) {
 			88: {{Name: "东上院312老师", URL: "https://live.example/a.flv?auth_key=k"}},
 		},
 	}
-	playable := New(context.Background(), &fakeSource{courses: []canvas.Course{{ID: 10001}}}, src)
+	playable := New(context.Background(), &fakeSource{courses: []canvas.Course{{ID: 10001}}}, src, nil)
 	err := fstest.TestFS(playable,
 		"courses/10001/replay",
 		"courses/10001/replay/111",
