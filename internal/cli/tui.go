@@ -27,7 +27,7 @@ import (
 
 // Banner lines, Debian login-banner style. Bump the version per phase.
 const (
-	versionLine  = "CanvasFS 0.3 (built 2026-10-01 UTC)"
+	versionLine  = "CanvasFS 0.4 (built 2026-10-01 UTC)"
 	warrantyLine = "CanvasFS comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law."
 )
 

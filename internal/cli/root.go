@@ -20,6 +20,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/mlearning"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
@@ -75,7 +76,7 @@ func classify(err error) *apiError {
 	if errors.As(err, &httpErr) && strings.HasPrefix(httpErr.Status, "401") {
 		return fail("auth_failed", "Canvas credential invalid or expired; run sjtu auth canvas login to log in again", exitAuth)
 	}
-	if errors.Is(err, video.ErrAuth) {
+	if errors.Is(err, video.ErrAuth) || errors.Is(err, mlearning.ErrAuth) {
 		return fail("auth_required", err.Error(), exitAuth)
 	}
 	if errors.Is(err, cred.ErrNotFound) {
@@ -113,6 +114,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	})
 	root.AddCommand(newAuthCmd(stderr))
 	root.AddCommand(newLsCmd(stdout), newStatCmd(stdout), newCatCmd(stdout), newDownloadCmd(stdout, stderr))
+	root.AddCommand(newAttendanceCmd(stdout))
 	root.AddCommand(&cobra.Command{
 		Use:   "tui",
 		Short: "Enter the interactive shell",

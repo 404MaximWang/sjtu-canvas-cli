@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/mlearning"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
@@ -24,6 +25,7 @@ func TestClassify(t *testing.T) {
 	}{
 		{"missing credential", cred.ErrNotFound, "auth_required", exitAuth},
 		{"video auth expired", video.ErrAuth, "auth_required", exitAuth},
+		{"mlearning auth expired", mlearning.ErrAuth, "auth_required", exitAuth},
 		{"canvas 401", &session.HTTPError{Status: "401 Unauthorized"}, "auth_failed", exitAuth},
 		{"canvas 403", &session.HTTPError{Status: "403 Forbidden"}, "error", exitError},
 		{"missing path", &fs.PathError{Op: "open", Path: "courses/1", Err: fs.ErrNotExist}, "not_found", exitError},
