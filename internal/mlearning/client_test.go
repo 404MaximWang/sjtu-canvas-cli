@@ -1,8 +1,17 @@
 package mlearning
 
 import (
+	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 )
 
 // TestValidateForscanURL pins the acceptance rules of scanned QR URLs:
@@ -89,5 +98,113 @@ func TestCleanToken(t *testing.T) {
 				t.Fatalf("got %q, %v", got, err)
 			}
 		})
+	}
+}
+
+// tokenStub fakes the mlearning host for token-refresh tests: the forscan
+// trigger plants a fresh token cookie and counts chain runs; every other
+// path is an API endpoint answered by respond with the caller's
+// Authorization header.
+type tokenStub struct {
+	chainRuns int
+	apiAuths  []string
+	srv       *httptest.Server
+}
+
+// newTokenStub builds a Client pointed at a stub server, with a stale
+// "stale-token" cookie pre-planted in the session jar.
+func newTokenStub(t *testing.T, respond func(auth string) string) (*Client, *tokenStub) {
+	t.Helper()
+	stub := &tokenStub{}
+	stub.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, forscanPath) {
+			stub.chainRuns++
+			http.SetCookie(w, &http.Cookie{Name: "token", Value: "fresh-token", Path: "/"})
+			io.WriteString(w, "<html></html>")
+			return
+		}
+		stub.apiAuths = append(stub.apiAuths, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, respond(r.Header.Get("Authorization")))
+	}))
+	t.Cleanup(stub.srv.Close)
+
+	sess, err := session.NewCookies()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(stub.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.SeedCookie("token", "stale-token", u.Hostname())
+	client := New(sess)
+	client.base = stub.srv.URL
+	return client, stub
+}
+
+// TestGetRefreshesRejectedToken pins the 10001 recovery: a dead planted
+// token is cleared, the SSO chain re-runs once, and the retried request
+// carries the fresh token and passes the success response through.
+func TestGetRefreshesRejectedToken(t *testing.T) {
+	client, stub := newTokenStub(t, func(auth string) string {
+		if auth == "fresh-token" {
+			return `{"resultCode":"200","body":{"ok":true}}`
+		}
+		return `{"resultCode":"10001","body":null}`
+	})
+	raw, err := client.get(context.Background(), "/lms-lti-rollcall-sjtu/rollcall/existentB?courseCode=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"resultCode":"200","body":{"ok":true}}`; string(raw) != want {
+		t.Fatalf("got %s, want %s", raw, want)
+	}
+	if stub.chainRuns != 1 {
+		t.Fatalf("SSO chain ran %d times, want 1", stub.chainRuns)
+	}
+	want := []string{"stale-token", "fresh-token"}
+	if !slices.Equal(stub.apiAuths, want) {
+		t.Fatalf("API authorizations %v, want %v", stub.apiAuths, want)
+	}
+}
+
+// TestGetPassesThroughPersistentRejection pins the retry bound: when the
+// fresh token is rejected too, the second response passes through verbatim
+// and the chain does not loop.
+func TestGetPassesThroughPersistentRejection(t *testing.T) {
+	client, stub := newTokenStub(t, func(string) string {
+		return `{"resultCode":"10001","body":null}`
+	})
+	raw, err := client.get(context.Background(), "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"resultCode":"10001","body":null}`; string(raw) != want {
+		t.Fatalf("got %s, want %s", raw, want)
+	}
+	if stub.chainRuns != 1 || len(stub.apiAuths) != 2 {
+		t.Fatalf("chain runs %d, API calls %d; want 1 and 2", stub.chainRuns, len(stub.apiAuths))
+	}
+}
+
+// TestGetKeepsLiveToken guards the fast path: a working token triggers no
+// chain run and the response passes through untouched.
+func TestGetKeepsLiveToken(t *testing.T) {
+	client, stub := newTokenStub(t, func(string) string {
+		return `{"resultCode":"200","body":{}}`
+	})
+	raw, err := client.get(context.Background(), "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"resultCode":"200","body":{}}`; string(raw) != want {
+		t.Fatalf("got %s, want %s", raw, want)
+	}
+	if stub.chainRuns != 0 {
+		t.Fatalf("SSO chain ran %d times, want 0", stub.chainRuns)
+	}
+	if len(stub.apiAuths) != 1 || stub.apiAuths[0] != "stale-token" {
+		t.Fatalf("API authorizations %v, want [stale-token]", stub.apiAuths)
 	}
 }

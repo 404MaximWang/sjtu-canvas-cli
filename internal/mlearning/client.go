@@ -8,6 +8,12 @@
 // mlearning domain. That cookie is the student client's Access_Token and
 // authenticates API requests as a bare Authorization header value, without
 // a Bearer prefix (verified against the live service on 2026-10-01).
+//
+// A dead Access_Token is rejected in the business layer, never as 401: the
+// API answers HTTP 200 carrying {"resultCode":"10001"} ("token不存在，请
+// 重新登录！"). Reads detect that shape, clear the planted token, re-run
+// the SSO chain, and retry once; a persistent rejection passes through
+// verbatim for the caller to judge.
 package mlearning
 
 import (
@@ -15,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -29,8 +36,6 @@ const (
 	// forscanPath prefixes the QR landing URLs; a JAAuthCookie-carrying
 	// visit to one rides the SSO chain and plants the token cookie.
 	forscanPath = "/lms/mobile2/forscan/"
-	// scanReferer is the Referer the scan endpoint expects.
-	scanReferer = baseURL + "/lms/mobile/"
 	// jaccountHost answers instead of mlearning when the SSO cookie expired.
 	jaccountHost = "jaccount.sjtu.edu.cn"
 )
@@ -47,12 +52,13 @@ var ErrInvalidURL = errors.New("not an mlearning forscan URL")
 // JAAuthCookie.
 type Client struct {
 	sess *session.Session
+	base string // API origin; a field so tests can point at a stub server
 }
 
 // New builds a Client over the given cookie session; the session must carry
 // a JAAuthCookie for the jAccount domain family.
 func New(sess *session.Session) *Client {
-	return &Client{sess: sess}
+	return &Client{sess: sess, base: baseURL}
 }
 
 // Status reports whether the course has a roll call in progress, as the raw
@@ -93,9 +99,9 @@ func (c *Client) Submit(ctx context.Context, rawURL string) (json.RawMessage, er
 	header := http.Header{
 		"Authorization":    {token},
 		"X-Requested-With": {"XMLHttpRequest"},
-		"Referer":          {scanReferer},
+		"Referer":          {c.base + "/lms/mobile/"},
 	}
-	scanURL := baseURL + "/lms-lti-rollcall-sjtu/sign/scan/" +
+	scanURL := c.base + "/lms-lti-rollcall-sjtu/sign/scan/" +
 		url.PathEscape(rollCallToken) + "/" + url.PathEscape(signHistoryID)
 	var raw json.RawMessage
 	if err := c.sess.DoJSONWith(ctx, http.MethodGet, scanURL, header, &raw); err != nil {
@@ -105,29 +111,77 @@ func (c *Client) Submit(ctx context.Context, rawURL string) (json.RawMessage, er
 }
 
 // get runs one authenticated GET against the API and returns the response
-// body verbatim: read projections pass upstream JSON through untouched.
+// body verbatim: read projections pass upstream JSON through untouched. On
+// the business-layer token rejection (HTTP 200, resultCode 10001) the
+// planted token is cleared, the SSO chain re-run, and the request retried
+// once; a persistent rejection passes through like any other response.
 func (c *Client) get(ctx context.Context, path string) (json.RawMessage, error) {
+	raw, err := c.getOnce(ctx, path)
+	if err != nil || !tokenRejected(raw) {
+		return raw, err
+	}
+	slog.Info("mlearning access token rejected, re-running SSO chain")
+	c.clearToken()
+	return c.getOnce(ctx, path)
+}
+
+// getOnce performs one authenticated GET attempt with the current token.
+func (c *Client) getOnce(ctx context.Context, path string) (json.RawMessage, error) {
 	token, err := c.token(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var raw json.RawMessage
 	header := http.Header{"Authorization": {token}}
-	if err := c.sess.DoJSONWith(ctx, http.MethodGet, baseURL+path, header, &raw); err != nil {
+	if err := c.sess.DoJSONWith(ctx, http.MethodGet, c.base+path, header, &raw); err != nil {
 		return nil, err
 	}
 	return raw, nil
 }
 
+// tokenRejected reports whether raw is the business-layer rejection of a
+// dead Access_Token: {"resultCode":"10001"}. The shape is pinned to the
+// observed response — a missing or non-string resultCode is not it.
+func tokenRejected(raw json.RawMessage) bool {
+	var envelope struct {
+		ResultCode string `json:"resultCode"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return false
+	}
+	return envelope.ResultCode == "10001"
+}
+
+// clearToken expires the planted token cookie so the next token call
+// re-runs the SSO chain. The callback plants it either as a host cookie or
+// as a .sjtu.edu.cn domain cookie — the only shapes that origin can set —
+// so both are expired. Deletion also turns a chain that completes without
+// re-planting into a loud "planted no token cookie" error instead of a
+// silent retry with the stale token.
+func (c *Client) clearToken() {
+	jar := c.sess.Jar()
+	if jar == nil {
+		return
+	}
+	u, err := url.Parse(c.base + "/")
+	if err != nil {
+		return
+	}
+	jar.SetCookies(u, []*http.Cookie{
+		{Name: "token", Path: "/", MaxAge: -1},
+		{Name: "token", Path: "/", Domain: ".sjtu.edu.cn", MaxAge: -1},
+	})
+}
+
 // token returns the mlearning Access_Token, running the SSO chain on first
-// use. A fabricated forscan URL triggers the chain (verified: any
-// well-formed forscan URL plants the cookie, whatever its parameters); the
-// jar then carries the token for every later call.
+// use and after every clearToken. A fabricated forscan URL triggers the
+// chain (verified: any well-formed forscan URL plants the cookie, whatever
+// its parameters); the jar then carries the token for every later call.
 func (c *Client) token(ctx context.Context) (string, error) {
-	if token, ok := c.sess.Cookie(baseURL+"/", "token"); ok {
+	if token, ok := c.sess.Cookie(c.base+"/", "token"); ok {
 		return cleanToken(token)
 	}
-	if err := c.sso(ctx, baseURL+forscanPath+"?rollCallToken=0&signHistoryId=0"); err != nil {
+	if err := c.sso(ctx, c.base+forscanPath+"?rollCallToken=0&signHistoryId=0"); err != nil {
 		return "", err
 	}
 	return c.plantedToken()
@@ -148,7 +202,7 @@ func (c *Client) sso(ctx context.Context, rawURL string) error {
 
 // plantedToken reads the token cookie the SSO chain must have planted.
 func (c *Client) plantedToken() (string, error) {
-	token, ok := c.sess.Cookie(baseURL+"/", "token")
+	token, ok := c.sess.Cookie(c.base+"/", "token")
 	if !ok {
 		return "", errors.New("mlearning SSO chain completed but planted no token cookie")
 	}
