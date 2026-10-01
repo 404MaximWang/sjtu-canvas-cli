@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -25,11 +26,31 @@ import (
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/vfs"
 )
 
-// Banner lines, Debian login-banner style. Bump the version per phase.
-const (
-	versionLine  = "CanvasFS 0.4 (built 2026-10-01 UTC)"
-	warrantyLine = "CanvasFS comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law."
-)
+// Banner lines, Debian login-banner style. The version comes from the
+// single declaration in update.go; never hardcode it here.
+const warrantyLine = "CanvasFS comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law."
+
+var versionLine = "CanvasFS " + Version + buildStamp()
+
+// buildStamp returns " (built YYYY-MM-DD UTC)" from the binary's own VCS
+// stamping (debug.ReadBuildInfo's vcs.time, i.e. the source commit time;
+// CI builds right after tagging, so it reads as the build time). Empty when
+// the binary carries no VCS info (-buildvcs=false, source tarball builds).
+func buildStamp() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.time" {
+			if t, err := time.Parse(time.RFC3339, s.Value); err == nil {
+				return " (built " + t.UTC().Format("2006-01-02") + " UTC)"
+			}
+			return ""
+		}
+	}
+	return ""
+}
 
 // bannerArt is the startup ASCII art, embedded from banner.txt.
 //

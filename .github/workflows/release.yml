@@ -72,7 +72,7 @@ jobs:
           DIR="sjtu-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
           mkdir -p "${DIR}"
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -ldflags="-s -w" -o "${DIR}/sjtu" ./cmd/sjtu
+            go build -trimpath -ldflags="-s -w -X github.com/404MaximWang/sjtu-canvas-cli/internal/cli.Version=${VERSION}" -o "${DIR}/sjtu" ./cmd/sjtu
           tar -czvf "${DIR}.tar.gz" -C "${DIR}" sjtu
 
       - name: Upload Artifact
