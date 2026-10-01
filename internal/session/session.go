@@ -30,15 +30,17 @@ const defaultTimeout = 30 * time.Second
 // bearer header and ignore cookies; cookie sessions carry a jar for the
 // jAccount SSO domain family.
 type Session struct {
-	client *http.Client
-	jar    *cookiejar.Jar // nil on token sessions
-	token  string         // empty on cookie sessions
+	client     *http.Client
+	noRedirect *http.Client   // same transport and jar, never follows redirects
+	jar        *cookiejar.Jar // nil on token sessions
+	token      string         // empty on cookie sessions
 }
 
 // NewToken builds a Session that authenticates every request with the given
 // Canvas bearer token.
 func NewToken(token string) *Session {
-	return &Session{client: newHTTPClient(nil), token: token}
+	client, noRedirect := newHTTPClients(nil)
+	return &Session{client: client, noRedirect: noRedirect, token: token}
 }
 
 // NewCookies builds a Session with a private, initially empty cookie jar.
@@ -50,11 +52,13 @@ func NewCookies() (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Session{client: newHTTPClient(jar), jar: jar}, nil
+	client, noRedirect := newHTTPClients(jar)
+	return &Session{client: client, noRedirect: noRedirect, jar: jar}, nil
 }
 
-// newHTTPClient assembles the shared transport defaults.
-func newHTTPClient(jar *cookiejar.Jar) *http.Client {
+// newHTTPClients assembles the shared transport defaults and builds the
+// redirect-following client plus its no-redirect sibling over one transport.
+func newHTTPClients(jar *cookiejar.Jar) (*http.Client, *http.Client) {
 	transport := &http.Transport{
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
@@ -70,10 +74,20 @@ func newHTTPClient(jar *cookiejar.Jar) *http.Client {
 	if jar != nil {
 		jarIface = jar
 	}
-	return &http.Client{Jar: jarIface, Transport: transport, Timeout: defaultTimeout}
+	client := &http.Client{Jar: jarIface, Transport: transport, Timeout: defaultTimeout}
+	noRedirect := &http.Client{
+		Jar:       jarIface,
+		Transport: transport,
+		Timeout:   defaultTimeout,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	return client, noRedirect
 }
-// JAAuthCookie restored from the credential store. Each domain is passed as
-// a bare host ("jaccount.sjtu.edu.cn").
+
+// SeedCookie plants a JAAuthCookie restored from the credential store. Each
+// domain is passed as a bare host ("jaccount.sjtu.edu.cn").
 func (s *Session) SeedCookie(name, value string, domains ...string) {
 	if s.jar == nil {
 		return

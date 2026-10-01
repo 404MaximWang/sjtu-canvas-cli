@@ -3,14 +3,10 @@ package session
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 )
 
 // maxErrorBody caps how much of an error response is echoed back; Canvas
@@ -43,21 +39,7 @@ func (s *Session) do(ctx context.Context, method, rawURL string) (*http.Response
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-	if s.token != "" {
-		req.Header.Set("Authorization", "Bearer "+s.token)
-	}
-	start := time.Now()
-	resp, err := s.client.Do(req)
-	if err != nil {
-		// Transport errors embed the full URL; scrub it because the query
-		// string can carry a file-download verifier the redactor never saw.
-		err = errors.New(strings.ReplaceAll(err.Error(), rawURL, logURL(rawURL)))
-		slog.Warn("request", "method", method, "url", logURL(rawURL), "error", err)
-		return nil, err
-	}
-	slog.Info("request", "method", method, "url", logURL(rawURL), "status", resp.StatusCode, "elapsed", time.Since(start))
-	return resp, nil
+	return s.run(s.client, req)
 }
 
 // logURL strips the query string from rawURL for log lines: Canvas file URLs
@@ -76,21 +58,37 @@ func logURL(rawURL string) string {
 // caller receives the value decoded into out, or an error, and never an open
 // body. out may be nil for requests whose payload is irrelevant.
 func (s *Session) DoJSON(ctx context.Context, method, rawURL string, out any) error {
-	_, err := s.doJSON(ctx, method, rawURL, out)
+	_, err := s.doJSON(ctx, method, rawURL, nil, out)
+	return err
+}
+
+// DoJSONWith behaves like DoJSON but carries extra request headers; the
+// v.sjtu.edu.cn API authenticates per-request with a jwt-token header.
+func (s *Session) DoJSONWith(ctx context.Context, method, rawURL string, header http.Header, out any) error {
+	_, err := s.doJSON(ctx, method, rawURL, header, out)
 	return err
 }
 
 // DoJSONHeader behaves like DoJSON but also returns the response headers,
 // which Canvas list pagination needs for the Link header.
 func (s *Session) DoJSONHeader(ctx context.Context, method, rawURL string, out any) (http.Header, error) {
-	return s.doJSON(ctx, method, rawURL, out)
+	return s.doJSON(ctx, method, rawURL, nil, out)
 }
 
-// doJSON is the shared body of DoJSON and DoJSONHeader. defer binds to
-// function return, not to a scope; doJSON performs a single request per
-// call, so closing here is exact.
-func (s *Session) doJSON(ctx context.Context, method, rawURL string, out any) (http.Header, error) {
-	resp, err := s.do(ctx, method, rawURL)
+// doJSON is the shared body of the DoJSON family. defer binds to function
+// return, not to a scope; doJSON performs a single request per call, so
+// closing here is exact.
+func (s *Session) doJSON(ctx context.Context, method, rawURL string, header http.Header, out any) (http.Header, error) {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	for key, values := range header {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
+	resp, err := s.run(s.client, req)
 	if err != nil {
 		return nil, err
 	}
