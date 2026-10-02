@@ -4,6 +4,8 @@
 
 你可以在脚本中组合使用这些接口，实现特定任务；你也可以将其作为UI后端。
 
+<img width="814" height="463" alt="Screenshot 2026-10-02 at 14 44 33" src="https://github.com/user-attachments/assets/012e3141-dd0a-4858-a8e6-6131562098d6" />
+
 ## 可用的操作系统
 
 本软件仅适配macOS和使用systemd的GNU/Linux。桌面和无桌面环境下均可使用。
