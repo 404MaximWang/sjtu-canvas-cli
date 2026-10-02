@@ -19,6 +19,27 @@ type Config struct {
 	// CanvasBaseURL is the Canvas root URL; the main campus and the Joint
 	// Institute use different hosts, so this stays configurable.
 	CanvasBaseURL string `json:"canvas_base_url"`
+	// Probe configures the daemon's health probes.
+	Probe ProbeConfig `json:"probe"`
+	// Notify configures the daemon's health-transition notification hook.
+	Notify NotifyConfig `json:"notify"`
+}
+
+// ProbeConfig configures the daemon's health probes.
+type ProbeConfig struct {
+	// VideoCourseID is the course the v.sjtu probe runs its launch chain
+	// against. Zero means unconfigured: the video domain reports unknown.
+	// There is deliberately no automatic course pick: a course without the
+	// video tool or out of term would manufacture false failures.
+	VideoCourseID int64 `json:"video_course_id"`
+}
+
+// NotifyConfig configures the daemon's health-transition notification.
+type NotifyConfig struct {
+	// Command is an argv array executed on every fail/recover transition,
+	// with the event JSON on stdin (e.g. an ntfy curl call). Empty falls
+	// back to a desktop notification (osascript / notify-send).
+	Command []string `json:"command"`
 }
 
 // Dir returns the configuration directory, honoring XDG_CONFIG_HOME and
