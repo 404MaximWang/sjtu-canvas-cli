@@ -37,6 +37,7 @@
 | `sjtu docs [topic]` | 打印接口契约文档（本文即 `cli` 主题；另有 `daemon` 主题） |
 | `sjtu tui` | 交互式 TUI Shell（终端环境下自动进入） |
 | `sjtu update [--check]` | 检查并更新至 GitHub 最新版本 |
+| `sjtu version` | 打印当前版本号（JSON 格式） |
 | `sjtu completion <shell>` | 生成 Shell 自动补全脚本 |
 
 不带参数执行 `sjtu` 时，终端环境下进入 TUI，非终端（管道）环境下打印帮助信息。
@@ -79,7 +80,7 @@
 | 类型 | 路径 |
 | --- | --- |
 | 配置文件 | `$XDG_CONFIG_HOME/sjtu/config.json`（默认 `~/.config/sjtu/config.json`） |
-| 凭证存储 | `$XDG_DATA_HOME/sjtu/`（默认 `~/.local/share/sjtu/`，目录权限 0700、文件权限 0600） |
+| 凭证存储 | 优先使用系统密钥环（macOS Keychain，Linux 下支持 GNOME Keyring / KWallet）；无图形桌面时保存于本地文件（`$XDG_DATA_HOME/sjtu/`，默认 `~/.local/share/sjtu/`，目录权限 0700、文件权限 0600）。当前存储后端可通过 `sjtu auth status` 查看 |
 | 运行日志 | `~/.local/state/sjtu/sjtu.log`（CLI）与 `sjtud.log`（daemon），单文件达 4 MB 时轮转备份为 `.bak` |
 | 元数据缓存 | `~/.cache/sjtu/meta` |
 | Daemon 套接字 | `~/.local/state/sjtu/sjtud.sock` |
