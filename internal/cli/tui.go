@@ -62,7 +62,7 @@ var bannerArt string
 // parsing. The session keeps an in-process cwd so relative paths work, and
 // records itself to the state directory. Command implementations are shared
 // with the CLI; only the rendering differs (human-readable here).
-func runTUI(ctx context.Context, stderr io.Writer) error {
+func runTUI(ctx context.Context, rt *Runtime, stderr io.Writer) error {
 	stateDir, err := logging.StateDir()
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func runTUI(ctx context.Context, stderr io.Writer) error {
 	// Capture before newSessionLog creates today's record file.
 	last := lastLogin(stateDir)
 
-	fsys, client, tokenSet, err := openVFS(ctx, true)
+	fsys, client, tokenSet, err := rt.openVFS(ctx, true)
 	if err != nil {
 		return err
 	}

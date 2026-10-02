@@ -49,12 +49,21 @@ func fail(code, hint string, exit int) *apiError { return &apiError{code, hint, 
 // Execute runs the root command and reports failures to stderr as structured
 // JSON. It returns the process exit code so main stays trivially small.
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	root := newRootCmd(stdout, stderr)
+	code, _ := ExecuteWith(NewRuntime(), ctx, args, stdout, stderr)
+	return code
+}
+
+// ExecuteWith runs the command tree against rt and additionally reports the
+// credential domain an auth failure blames (DomainCanvas / DomainJAccount),
+// or "" when the run did not fail on auth. The daemon uses the domain to
+// reload the credential and retry the command once.
+func ExecuteWith(rt *Runtime, ctx context.Context, args []string, stdout, stderr io.Writer) (int, string) {
+	root := newRootCmd(rt, stdout, stderr)
 	root.SetArgs(args)
 	if err := root.ExecuteContext(ctx); err != nil {
-		return reportError(stderr, err)
+		return reportError(stderr, err), authDomainOf(err)
 	}
-	return exitOK
+	return exitOK, ""
 }
 
 // reportError renders err per the output contract and returns the exit code.
@@ -95,7 +104,7 @@ func classify(err error) *apiError {
 // newRootCmd assembles the sjtu command tree. Bare invocation enters the TUI
 // when attached to a terminal, and prints help otherwise — agent harnesses
 // drive stdin through pipes, humans through terminals.
-func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+func newRootCmd(rt *Runtime, stdout, stderr io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "sjtu",
 		Short:         "CLI for SJTU online services (Canvas, jAccount, and more)",
@@ -103,7 +112,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) {
-				return runTUI(cmd.Context(), stderr)
+				return runTUI(cmd.Context(), rt, stderr)
 			}
 			return cmd.Help()
 		},
@@ -113,15 +122,16 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		return fail("usage", err.Error(), exitUsage)
 	})
 	root.AddCommand(newAuthCmd(stderr))
-	root.AddCommand(newLsCmd(stdout), newStatCmd(stdout), newCatCmd(stdout), newDownloadCmd(stdout, stderr))
-	root.AddCommand(newAttendanceCmd(stdout))
+	root.AddCommand(newLsCmd(rt, stdout), newStatCmd(rt, stdout), newCatCmd(rt, stdout), newDownloadCmd(rt, stdout, stderr))
+	root.AddCommand(newAttendanceCmd(rt, stdout))
 	root.AddCommand(newUpdateCmd(stdout, stderr))
+	root.AddCommand(newDaemonCmd(rt))
 	root.AddCommand(&cobra.Command{
 		Use:   "tui",
 		Short: "Enter the interactive shell",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTUI(cmd.Context(), stderr)
+			return runTUI(cmd.Context(), rt, stderr)
 		},
 	})
 	return root

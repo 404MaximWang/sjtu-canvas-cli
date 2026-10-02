@@ -19,7 +19,7 @@ import (
 )
 
 // newDownloadCmd builds `sjtu download <vfs-path> [local-path]`.
-func newDownloadCmd(stdout, stderr io.Writer) *cobra.Command {
+func newDownloadCmd(rt *Runtime, stdout, stderr io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "download <vfs-path> [local-path]",
 		Short: "Download a file from the virtual file system to local disk",
@@ -33,7 +33,7 @@ func newDownloadCmd(stdout, stderr io.Writer) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fsys, _, _, err := openVFS(cmd.Context(), false)
+			fsys, _, _, err := rt.openVFS(cmd.Context(), false)
 			if err != nil {
 				return err
 			}

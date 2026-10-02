@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,24 +12,19 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/canvas"
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/config"
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/mlearning"
-	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/vfs"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
 
 // newFsCmd builds one of the three filesystem verbs; they differ only in the
 // verb passed to runFS.
-func newFsCmd(stdout io.Writer, verb, short string) *cobra.Command {
+func newFsCmd(rt *Runtime, stdout io.Writer, verb, short string) *cobra.Command {
 	return &cobra.Command{
 		Use:   verb + " <path>",
 		Short: short,
 		Args:  absolutePathArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fsys, _, _, err := openVFS(cmd.Context(), false)
+			fsys, _, _, err := rt.openVFS(cmd.Context(), false)
 			if err != nil {
 				return err
 			}
@@ -40,18 +34,18 @@ func newFsCmd(stdout io.Writer, verb, short string) *cobra.Command {
 }
 
 // newLsCmd builds `sjtu ls <path>`.
-func newLsCmd(stdout io.Writer) *cobra.Command {
-	return newFsCmd(stdout, "ls", "List a directory in the Canvas file system")
+func newLsCmd(rt *Runtime, stdout io.Writer) *cobra.Command {
+	return newFsCmd(rt, stdout, "ls", "List a directory in the Canvas file system")
 }
 
 // newStatCmd builds `sjtu stat <path>`.
-func newStatCmd(stdout io.Writer) *cobra.Command {
-	return newFsCmd(stdout, "stat", "Describe one node in the Canvas file system")
+func newStatCmd(rt *Runtime, stdout io.Writer) *cobra.Command {
+	return newFsCmd(rt, stdout, "stat", "Describe one node in the Canvas file system")
 }
 
 // newCatCmd builds `sjtu cat <path>`.
-func newCatCmd(stdout io.Writer) *cobra.Command {
-	return newFsCmd(stdout, "cat", "Stream a file's content to stdout")
+func newCatCmd(rt *Runtime, stdout io.Writer) *cobra.Command {
+	return newFsCmd(rt, stdout, "cat", "Stream a file's content to stdout")
 }
 
 // absolutePathArg validates the single positional path argument: CLI mode
@@ -64,79 +58,6 @@ func absolutePathArg(_ *cobra.Command, args []string) error {
 		return fail("usage", "path must start with / (CLI mode accepts absolute paths only)", exitUsage)
 	}
 	return nil
-}
-
-// openVFS assembles the Canvas-backed file system for one command run:
-// config → credential store → authenticated session → canvas client →
-// metadata cache → FS. The client rides along for the TUI's startup
-// self-check; tokenSet reports whether a Canvas credential exists at all.
-//
-// With lenient=false a missing credential is a hard error (CLI behavior:
-// auth_required). With lenient=true the tree is built over an empty token
-// (TUI behavior: the startup warning explains, and every fetch then fails
-// with 401 until the user logs in).
-func openVFS(ctx context.Context, lenient bool) (*vfs.FS, *canvas.Client, bool, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("load config: %w", err)
-	}
-	store, err := cred.Open()
-	if err != nil {
-		return nil, nil, false, fmt.Errorf("open credential store: %w", err)
-	}
-	token, err := store.Get(cred.KeyCanvas)
-	if err != nil {
-		if !lenient || !errors.Is(err, cred.ErrNotFound) {
-			return nil, nil, false, err // cred.ErrNotFound classifies as auth_required
-		}
-		token = ""
-	}
-	tokenSet := token != ""
-	// Register before any use so the token can never reach a log line.
-	session.RegisterSecret(token)
-	client := canvas.New(session.NewToken(token), cfg.CanvasBaseURL)
-	src, err := vfs.NewCachedSource(vfs.CanvasSource(client))
-	if err != nil {
-		return nil, nil, false, err
-	}
-	sess := openJAccountSession(store)
-	return vfs.New(ctx, src, openVideoSource(sess), openAttendanceSource(sess)), client, tokenSet, nil
-}
-
-// openJAccountSession builds one cookie session carrying the stored
-// JAAuthCookie, shared by the jAccount-backed sources (video, attendance).
-// It returns nil when no usable credential exists.
-func openJAccountSession(store cred.Store) *session.Session {
-	cookie, err := getCredential(store, cred.KeyJAccount)
-	if err != nil {
-		return nil
-	}
-	sess, err := session.NewCookies()
-	if err != nil {
-		return nil
-	}
-	sess.SeedCookie("JAAuthCookie", cookie, "jaccount.sjtu.edu.cn", "my.sjtu.edu.cn")
-	return sess
-}
-
-// openVideoSource builds the video source over the jAccount session. A nil
-// session keeps the source present but answering every call with a
-// structured auth error, so replay/ and live/ explain themselves instead
-// of vanishing from the tree.
-func openVideoSource(sess *session.Session) vfs.VideoSource {
-	if sess == nil {
-		return videoAuthSource{}
-	}
-	return video.New(sess)
-}
-
-// openAttendanceSource builds the attendance source over the jAccount
-// session, with the same missing-credential stub policy as video.
-func openAttendanceSource(sess *session.Session) vfs.AttendanceSource {
-	if sess == nil {
-		return attendanceAuthSource{}
-	}
-	return mlearning.New(sess)
 }
 
 // videoAuthSource is the VideoSource used when no JAAuthCookie is stored.
