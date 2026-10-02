@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 )
@@ -53,6 +54,7 @@ var ErrInvalidURL = errors.New("not an mlearning forscan URL")
 type Client struct {
 	sess *session.Session
 	base string // API origin; a field so tests can point at a stub server
+	mu   sync.Mutex
 }
 
 // New builds a Client over the given cookie session; the session must carry
@@ -78,6 +80,13 @@ func (c *Client) Current(ctx context.Context, courseID int64) (json.RawMessage, 
 func (c *Client) Records(ctx context.Context, courseID int64) (json.RawMessage, error) {
 	return c.get(ctx, "/lms-lti-rollcall-sjtu/sign/records?courseCode="+strconv.FormatInt(courseID, 10)+
 		"&pageNum=1&pageSize=500")
+}
+
+// Self fetches the caller's identity as the raw users/self response. It is
+// the mlearning domain's lightweight health probe: a live token answers
+// 200 with the identity body, a dead one the 10001 rejection.
+func (c *Client) Self(ctx context.Context) (json.RawMessage, error) {
+	return c.get(ctx, "/lms-canvas-sjtu/users/self")
 }
 
 // Submit signs one roll call given its scanned QR URL: the URL itself rides
@@ -177,7 +186,15 @@ func (c *Client) clearToken() {
 // use and after every clearToken. A fabricated forscan URL triggers the
 // chain (verified: any well-formed forscan URL plants the cookie, whatever
 // its parameters); the jar then carries the token for every later call.
+// The double-checked lock keeps concurrent daemon requests from stampeding
+// the chain: the fast path is lock-free, and a request that queued on the
+// lock re-checks the jar before running its own chain.
 func (c *Client) token(ctx context.Context) (string, error) {
+	if token, ok := c.sess.Cookie(c.base+"/", "token"); ok {
+		return cleanToken(token)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if token, ok := c.sess.Cookie(c.base+"/", "token"); ok {
 		return cleanToken(token)
 	}
