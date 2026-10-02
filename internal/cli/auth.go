@@ -24,27 +24,29 @@ import (
 // not network-paced.
 const qrLoginTimeout = 3 * time.Minute
 
-// newAuthCmd builds `sjtu auth` and its six leaves.
-func newAuthCmd(stderr io.Writer) *cobra.Command {
+// newAuthCmd builds `sjtu auth` and its six leaves. Results go to the
+// injected stdout: over the daemon socket that writer is the request
+// buffer, and fmt.Print would vanish into the daemon's own stdout.
+func newAuthCmd(stdout, stderr io.Writer) *cobra.Command {
 	auth := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage Canvas and jAccount credentials",
 	}
-	auth.AddCommand(newAuthCanvasCmd())
-	auth.AddCommand(newAuthJAccountCmd(stderr))
-	auth.AddCommand(newAuthStatusCmd())
+	auth.AddCommand(newAuthCanvasCmd(stdout))
+	auth.AddCommand(newAuthJAccountCmd(stdout, stderr))
+	auth.AddCommand(newAuthStatusCmd(stdout))
 	auth.AddCommand(&cobra.Command{
 		Use:   "logout",
 		Short: "Remove both the Canvas token and the jAccount session",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return logoutAll(cmd.Context())
+			return logoutAll(cmd.Context(), stdout)
 		},
 	})
 	return auth
 }
 
 // newAuthCanvasCmd builds `sjtu auth canvas login|logout`.
-func newAuthCanvasCmd() *cobra.Command {
+func newAuthCanvasCmd(stdout io.Writer) *cobra.Command {
 	canvasCmd := &cobra.Command{
 		Use:   "canvas",
 		Short: "Canvas API token (oc.sjtu.edu.cn)",
@@ -54,7 +56,7 @@ func newAuthCanvasCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Store a Canvas API token after verifying it",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return canvasLogin(cmd.Context(), tokenFlag)
+			return canvasLogin(cmd.Context(), tokenFlag, stdout)
 		},
 	}
 	login.Flags().StringVar(&tokenFlag, "token", "", "Canvas API token (omit to paste interactively)")
@@ -63,14 +65,14 @@ func newAuthCanvasCmd() *cobra.Command {
 		Use:   "logout",
 		Short: "Remove the stored Canvas API token",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return logout(cmd.Context(), cred.KeyCanvas, "Canvas token")
+			return logout(cmd.Context(), stdout, cred.KeyCanvas, "Canvas token")
 		},
 	})
 	return canvasCmd
 }
 
 // newAuthJAccountCmd builds `sjtu auth jaccount login|logout`.
-func newAuthJAccountCmd(stderr io.Writer) *cobra.Command {
+func newAuthJAccountCmd(stdout, stderr io.Writer) *cobra.Command {
 	jaccountCmd := &cobra.Command{
 		Use:   "jaccount",
 		Short: "jAccount SSO session (QR-code login)",
@@ -79,26 +81,26 @@ func newAuthJAccountCmd(stderr io.Writer) *cobra.Command {
 		Use:   "login",
 		Short: "Log in via jAccount QR code",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return jaccountLogin(cmd.Context(), ensureStderr(stderr))
+			return jaccountLogin(cmd.Context(), stdout, ensureStderr(stderr))
 		},
 	})
 	jaccountCmd.AddCommand(&cobra.Command{
 		Use:   "logout",
 		Short: "Remove the stored jAccount session cookie",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return logout(cmd.Context(), cred.KeyJAccount, "jAccount session")
+			return logout(cmd.Context(), stdout, cred.KeyJAccount, "jAccount session")
 		},
 	})
 	return jaccountCmd
 }
 
 // newAuthStatusCmd builds `sjtu auth status`.
-func newAuthStatusCmd() *cobra.Command {
+func newAuthStatusCmd(stdout io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show which credentials are stored and whether they still work",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return authStatus(cmd.Context())
+			return authStatus(cmd.Context(), stdout)
 		},
 	}
 }
@@ -114,7 +116,7 @@ func openStore() (cred.Store, error) {
 
 // canvasLogin implements `sjtu auth canvas login`: obtain a token (flag or
 // hidden prompt), verify it against Canvas, then store it.
-func canvasLogin(ctx context.Context, tokenFlag string) error {
+func canvasLogin(ctx context.Context, tokenFlag string, stdout io.Writer) error {
 	token := strings.TrimSpace(tokenFlag)
 	if token == "" {
 		var err error
@@ -139,7 +141,7 @@ func canvasLogin(ctx context.Context, tokenFlag string) error {
 		return fmt.Errorf("store token: %w", err)
 	}
 	session.RegisterSecret(token)
-	fmt.Printf("Canvas login OK: %s (id %d), stored via %s\n", me.Name, me.ID, store.Backend())
+	fmt.Fprintf(stdout, "Canvas login OK: %s (id %d), stored via %s\n", me.Name, me.ID, store.Backend())
 	return nil
 }
 
@@ -164,7 +166,7 @@ func promptHidden(prompt string) (string, error) {
 
 // jaccountLogin implements `sjtu auth jaccount login`: render the QR code,
 // wait for the scan, verify the issued cookie, then store it.
-func jaccountLogin(ctx context.Context, stderr io.Writer) error {
+func jaccountLogin(ctx context.Context, stdout, stderr io.Writer) error {
 	ctx, cancel := context.WithTimeout(ctx, qrLoginTimeout)
 	defer cancel()
 	first := true
@@ -196,7 +198,7 @@ func jaccountLogin(ctx context.Context, stderr io.Writer) error {
 		return fmt.Errorf("store cookie: %w", err)
 	}
 	session.RegisterSecret(cookie)
-	fmt.Printf("jAccount login OK, session stored via %s\n", store.Backend())
+	fmt.Fprintf(stdout, "jAccount login OK, session stored via %s\n", store.Backend())
 	return nil
 }
 
@@ -215,61 +217,61 @@ func getCredential(store cred.Store, key string) (string, error) {
 
 // authStatus implements `sjtu auth status`: list each credential, where it
 // lives, and whether the upstream service still accepts it.
-func authStatus(ctx context.Context) error {
+func authStatus(ctx context.Context, stdout io.Writer) error {
 	store, err := openStore()
 	if err != nil {
 		return err
 	}
-	fmt.Printf("credential backend: %s\n", store.Backend())
-	reportCanvas(ctx, store)
-	reportJAccount(ctx, store)
+	fmt.Fprintf(stdout, "credential backend: %s\n", store.Backend())
+	reportCanvas(ctx, store, stdout)
+	reportJAccount(ctx, store, stdout)
 	return nil
 }
 
 // reportCanvas prints the Canvas token's presence and live validity.
-func reportCanvas(ctx context.Context, store cred.Store) {
+func reportCanvas(ctx context.Context, store cred.Store, stdout io.Writer) {
 	token, err := getCredential(store, cred.KeyCanvas)
 	if errors.Is(err, cred.ErrNotFound) {
-		fmt.Println("canvas:   not configured")
+		fmt.Fprintln(stdout, "canvas:   not configured")
 		return
 	}
 	if err != nil {
-		fmt.Printf("canvas:   read error: %v\n", err)
+		fmt.Fprintf(stdout, "canvas:   read error: %v\n", err)
 		return
 	}
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Printf("canvas:   config error: %v\n", err)
+		fmt.Fprintf(stdout, "canvas:   config error: %v\n", err)
 		return
 	}
 	me, err := canvas.VerifyToken(ctx, cfg.CanvasBaseURL, token)
 	if err != nil {
-		fmt.Println("canvas:   stored but rejected (expired or revoked)")
+		fmt.Fprintln(stdout, "canvas:   stored but rejected (expired or revoked)")
 		return
 	}
-	fmt.Printf("canvas:   valid, %s (id %d)\n", me.Name, me.ID)
+	fmt.Fprintf(stdout, "canvas:   valid, %s (id %d)\n", me.Name, me.ID)
 }
 
 // reportJAccount prints the jAccount cookie's presence and live validity.
-func reportJAccount(ctx context.Context, store cred.Store) {
+func reportJAccount(ctx context.Context, store cred.Store, stdout io.Writer) {
 	cookie, err := getCredential(store, cred.KeyJAccount)
 	if errors.Is(err, cred.ErrNotFound) {
-		fmt.Println("jaccount: not configured")
+		fmt.Fprintln(stdout, "jaccount: not configured")
 		return
 	}
 	if err != nil {
-		fmt.Printf("jaccount: read error: %v\n", err)
+		fmt.Fprintf(stdout, "jaccount: read error: %v\n", err)
 		return
 	}
 	if err := jaccount.Verify(ctx, cookie); err != nil {
-		fmt.Println("jaccount: stored but rejected (session expired)")
+		fmt.Fprintln(stdout, "jaccount: stored but rejected (session expired)")
 		return
 	}
-	fmt.Println("jaccount: valid")
+	fmt.Fprintln(stdout, "jaccount: valid")
 }
 
 // logout removes one credential and reports what happened.
-func logout(_ context.Context, key, label string) error {
+func logout(_ context.Context, stdout io.Writer, key, label string) error {
 	store, err := openStore()
 	if err != nil {
 		return err
@@ -277,15 +279,15 @@ func logout(_ context.Context, key, label string) error {
 	if err := store.Delete(key); err != nil {
 		return fmt.Errorf("remove %s: %w", label, err)
 	}
-	fmt.Printf("%s removed\n", label)
+	fmt.Fprintf(stdout, "%s removed\n", label)
 	return nil
 }
 
 // logoutAll implements `sjtu auth logout` without a subcommand: drop both
 // credentials.
-func logoutAll(ctx context.Context) error {
-	if err := logout(ctx, cred.KeyCanvas, "Canvas token"); err != nil {
+func logoutAll(ctx context.Context, stdout io.Writer) error {
+	if err := logout(ctx, stdout, cred.KeyCanvas, "Canvas token"); err != nil {
 		return err
 	}
-	return logout(ctx, cred.KeyJAccount, "jAccount session")
+	return logout(ctx, stdout, cred.KeyJAccount, "jAccount session")
 }

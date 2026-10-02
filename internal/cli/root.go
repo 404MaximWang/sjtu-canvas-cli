@@ -117,11 +117,16 @@ func newRootCmd(rt *Runtime, stdout, stderr io.Writer) *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	// Cobra's own output (help, usage) must follow the injected writers too:
+	// inside the daemon they are the per-request buffers, and os.Stdout of
+	// the daemon process is nowhere a socket client can see.
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	// Flag parse failures are usage errors, exit code 2.
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fail("usage", err.Error(), exitUsage)
 	})
-	root.AddCommand(newAuthCmd(stderr))
+	root.AddCommand(newAuthCmd(stdout, stderr))
 	root.AddCommand(newLsCmd(rt, stdout), newStatCmd(rt, stdout), newCatCmd(rt, stdout), newDownloadCmd(rt, stdout, stderr))
 	root.AddCommand(newAttendanceCmd(rt, stdout))
 	root.AddCommand(newUpdateCmd(stdout, stderr))

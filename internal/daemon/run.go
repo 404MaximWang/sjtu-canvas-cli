@@ -87,15 +87,17 @@ func writeBuffered(w http.ResponseWriter, resp map[string]any) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// disabledOnSocket reports commands that cannot run without a terminal or
-// would fork a second daemon: interactive logins, the TUI, daemon itself.
+// disabledOnSocket reports commands that must not run over the socket:
+// interactive logins and the TUI (need a terminal), daemon itself (would
+// fork a second daemon), and credential-removing logouts (writes must stay
+// a deliberate local act).
 func disabledOnSocket(argv []string) bool {
 	switch argv[0] {
 	case "daemon", "tui":
 		return true
 	case "auth":
 		for _, arg := range argv[1:] {
-			if arg == "login" {
+			if arg == "login" || arg == "logout" {
 				return true
 			}
 		}

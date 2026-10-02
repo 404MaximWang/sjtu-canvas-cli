@@ -39,11 +39,13 @@ HTTP 状态码固定为 200，执行结果由响应体中的 `code` 判定：
 
 ### Socket 禁用清单
 
-依赖交互式终端或会产生递归常驻的命令在 Socket 接口中禁用，调用时按缓冲模式返回 `code: 2`：
+依赖交互式终端、会产生递归常驻或执行凭证写操作的命令在 Socket 接口中禁用，调用时按缓冲模式返回 `code: 2`：
 
 - `daemon`（含 `install` / `uninstall`）
 - `tui`
-- `auth canvas login` / `auth jaccount login`（涉及交互式终端扫码与输入）
+- `auth` 下的 `login` 系列（交互式扫码与输入）与 `logout` 系列（凭证删除须为本机显式操作）
+
+`auth status` 为只读操作，不在禁用之列。
 
 ## GET /healthz
 

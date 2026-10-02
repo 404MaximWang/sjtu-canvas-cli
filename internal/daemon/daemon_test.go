@@ -88,6 +88,7 @@ func TestRunRejectsSocketDisabledCommands(t *testing.T) {
 	d, _, _ := testDaemon(run)
 	for _, argv := range []string{
 		`["daemon"]`, `["tui"]`, `["auth","canvas","login"]`, `["auth","jaccount","login"]`,
+		`["auth","logout"]`, `["auth","canvas","logout"]`,
 	} {
 		rec := serveRun(d, `{"argv":`+argv+`}`)
 		if rec.Code != http.StatusOK {

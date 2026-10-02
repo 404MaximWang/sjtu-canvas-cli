@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cred"
@@ -12,6 +14,20 @@ import (
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/session"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
+
+// TestBareGroupHelpUsesInjectedStdout is the regression test for the
+// vanished-output bug: a bare group command prints help through cobra, and
+// inside the daemon os.Stdout is nowhere a socket client can see, so help
+// must land in the injected writer.
+func TestBareGroupHelpUsesInjectedStdout(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Execute(context.Background(), []string{"auth"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("bare auth: exit %d, stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "canvas") {
+		t.Fatalf("bare auth help missing from injected stdout: %q", stdout.String())
+	}
+}
 
 // TestClassify pins the output contract's error-code and exit-code mapping,
 // including the auth paths that cannot be exercised without touching the
