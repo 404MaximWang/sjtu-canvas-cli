@@ -22,13 +22,24 @@ curl -fsSL https://soft.mahiro.ink/sjtu-install.sh | sh
 
 ## 快速开始
 
-1. **使用前登录**：
+1. **登录**：
    ```bash
    sjtu auth canvas login      # 配置 Canvas API Token
-   sjtu auth jaccount login    # 交互式扫码登录 jAccount
+   sjtu auth jaccount login    # 扫码登录 jAccount
    ```
 
-2. **按需注册常驻服务**：
+2. **填写配置（不会写就问AI）**：
+   在 `~/.config/sjtu/config.json` 中配置视频自检课程 ID 与通知命令：
+   ```json
+   {
+     "probe": { "video_course_id": 12345 },
+     "notify": { "command": ["curl", "-d", "@-", "https://ntfy.sh/your-topic"] }
+   }
+   ```
+   - `video_course_id`：12345 仅为示例；请填写你正在修读的课程数字 ID（访问 Canvas 平台打开任意课程，从 URL 末尾即可获取）。
+   - `notify.command`：告警通知命令示例；事件 JSON 通过 stdin 传入，此处以推送至 ntfy 为例，亦可按需调用自定义脚本。
+
+3. **按需注册常驻服务**：
    若需复用预热会话加速命令并启用健康监测，可一键注册为系统服务：
    ```bash
    sjtu daemon install
