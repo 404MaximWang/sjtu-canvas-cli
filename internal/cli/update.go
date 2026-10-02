@@ -69,17 +69,35 @@ func runUpdate(ctx context.Context, checkOnly bool, stdout, stderr io.Writer) er
 	switch {
 	case err != nil:
 		fmt.Fprintf(stderr, "warning: local version %q is not a release build; it will be replaced by %s\n", Version, latestTag)
+		if checkOnly {
+			// Comparison is impossible, so "available" would be a lie:
+			// report what is known and nothing more.
+			return writeJSON(stdout, map[string]any{
+				"status":  "not_a_release",
+				"current": Version,
+				"latest":  latestTag,
+			})
+		}
 	case cmp == 0:
-		fmt.Fprintf(stdout, "sjtu is already up to date (%s).\n", Version)
-		return nil
+		return writeJSON(stdout, map[string]any{
+			"status":  "up_to_date",
+			"current": Version,
+			"latest":  latestTag,
+		})
 	case cmp > 0:
-		fmt.Fprintf(stdout, "local version %s is newer than the latest release %s; nothing to do.\n", Version, latestTag)
-		return nil
+		return writeJSON(stdout, map[string]any{
+			"status":  "ahead",
+			"current": Version,
+			"latest":  latestTag,
+		})
 	}
 
-	fmt.Fprintf(stdout, "New version available: %s (current: %s)\n", latestTag, Version)
 	if checkOnly {
-		return nil
+		return writeJSON(stdout, map[string]any{
+			"status":  "available",
+			"current": Version,
+			"latest":  latestTag,
+		})
 	}
 
 	tarballName := fmt.Sprintf("sjtu-%s-%s-%s.tar.gz", latestTag, runtime.GOOS, runtime.GOARCH)
@@ -121,8 +139,11 @@ func runUpdate(ctx context.Context, checkOnly bool, stdout, stderr io.Writer) er
 		return err
 	}
 
-	fmt.Fprintf(stdout, "Successfully updated sjtu to %s!\n", latestTag)
-	return nil
+	return writeJSON(stdout, map[string]any{
+		"status": "updated",
+		"from":   Version,
+		"to":     latestTag,
+	})
 }
 
 // compareVersions orders two version strings of the form [v]MAJOR.MINOR.PATCH:
