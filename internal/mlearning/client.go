@@ -39,6 +39,9 @@ const (
 	forscanPath = "/lms/mobile2/forscan/"
 	// jaccountHost answers instead of mlearning when the SSO cookie expired.
 	jaccountHost = "jaccount.sjtu.edu.cn"
+	// jaAuthCookieName is the jAccount SSO credential cookie: the one cookie
+	// a clean-slate SSO chain keeps.
+	jaAuthCookieName = "JAAuthCookie"
 )
 
 // ErrAuth reports an expired or missing jAccount session: the SSO chain
@@ -122,15 +125,16 @@ func (c *Client) Submit(ctx context.Context, rawURL string) (json.RawMessage, er
 // get runs one authenticated GET against the API and returns the response
 // body verbatim: read projections pass upstream JSON through untouched. On
 // the business-layer token rejection (HTTP 200, resultCode 10001) the
-// planted token is cleared, the SSO chain re-run, and the request retried
-// once; a persistent rejection passes through like any other response.
+// domain's cookies are cleared, the SSO chain re-run, and the request
+// retried once; a persistent rejection passes through like any other
+// response.
 func (c *Client) get(ctx context.Context, path string) (json.RawMessage, error) {
 	raw, err := c.getOnce(ctx, path)
 	if err != nil || !tokenRejected(raw) {
 		return raw, err
 	}
 	slog.Info("mlearning access token rejected, re-running SSO chain")
-	c.clearToken()
+	c.sess.ClearCookies(c.base+"/", jaAuthCookieName)
 	return c.getOnce(ctx, path)
 }
 
@@ -161,29 +165,8 @@ func tokenRejected(raw json.RawMessage) bool {
 	return envelope.ResultCode == "10001"
 }
 
-// clearToken expires the planted token cookie so the next token call
-// re-runs the SSO chain. The callback plants it either as a host cookie or
-// as a .sjtu.edu.cn domain cookie — the only shapes that origin can set —
-// so both are expired. Deletion also turns a chain that completes without
-// re-planting into a loud "planted no token cookie" error instead of a
-// silent retry with the stale token.
-func (c *Client) clearToken() {
-	jar := c.sess.Jar()
-	if jar == nil {
-		return
-	}
-	u, err := url.Parse(c.base + "/")
-	if err != nil {
-		return
-	}
-	jar.SetCookies(u, []*http.Cookie{
-		{Name: "token", Path: "/", MaxAge: -1},
-		{Name: "token", Path: "/", Domain: ".sjtu.edu.cn", MaxAge: -1},
-	})
-}
-
 // token returns the mlearning Access_Token, running the SSO chain on first
-// use and after every clearToken. A fabricated forscan URL triggers the
+// use and after every rejection-driven clear. A fabricated forscan URL triggers the
 // chain (verified: any well-formed forscan URL plants the cookie, whatever
 // its parameters); the jar then carries the token for every later call.
 // The double-checked lock keeps concurrent daemon requests from stampeding
@@ -205,13 +188,20 @@ func (c *Client) token(ctx context.Context) (string, error) {
 }
 
 // sso visits one mlearning URL with redirect following, running the SSO
-// chain that plants the token cookie as a side effect. The terminal
-// forscan page 500s as a matter of course (the QR parameters may be
-// fabricated), but the callback plants the token cookie before that page
-// loads — so an HTTP error late in the chain is tolerated when the jar
+// chain that plants the token cookie as a side effect. The chain starts
+// from a clean slate: cookies left over from an earlier chain (the token's
+// session companions) make mlearning answer the forscan entry with an
+// immediate 500 instead of opening the jAccount redirect chain, which
+// permanently broke re-authentication until restart. The JAAuthCookie is
+// kept — it is the credential the chain authenticates with.
+//
+// The terminal forscan page 500s as a matter of course (the QR parameters
+// may be fabricated), but the callback plants the token cookie before that
+// page loads — so an HTTP error late in the chain is tolerated when the jar
 // proves the cookie landed. A dead JAAuthCookie still surfaces as ErrAuth:
 // its chain ends on the login page, which answers 200.
 func (c *Client) sso(ctx context.Context, rawURL string) error {
+	c.sess.ClearCookies(c.base+"/", jaAuthCookieName)
 	_, finalURL, err := c.sess.GetHTML(ctx, rawURL)
 	if err != nil {
 		var httpErr *session.HTTPError

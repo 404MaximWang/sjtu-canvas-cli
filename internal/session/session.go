@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -122,4 +123,43 @@ func (s *Session) Jar() http.CookieJar {
 		return nil
 	}
 	return s.jar
+}
+
+// ClearCookies expires every cookie that would be sent to rawURL — except
+// the names in keep, which are credentials the session exists to carry.
+// The jar offers no enumeration beyond "cookies for this URL", and deletion
+// must match the planted (name, domain, path) triple, so each sent name is
+// expired in all three shapes an origin can plant: host cookie, host-domain
+// cookie, and parent-domain cookie. SSO chains re-run from a clean slate:
+// stale session residue makes mlearning answer its forscan entry with an
+// immediate 500 instead of starting the redirect chain.
+func (s *Session) ClearCookies(rawURL string, keep ...string) {
+	if s.jar == nil {
+		return
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return
+	}
+	skip := make(map[string]bool, len(keep))
+	for _, name := range keep {
+		skip[name] = true
+	}
+	host := u.Hostname()
+	parent := host
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		parent = host[i+1:]
+	}
+	var doomed []*http.Cookie
+	for _, c := range s.jar.Cookies(u) {
+		if skip[c.Name] {
+			continue
+		}
+		doomed = append(doomed,
+			&http.Cookie{Name: c.Name, Path: "/", MaxAge: -1},
+			&http.Cookie{Name: c.Name, Path: "/", Domain: "." + host, MaxAge: -1},
+			&http.Cookie{Name: c.Name, Path: "/", Domain: "." + parent, MaxAge: -1},
+		)
+	}
+	s.jar.SetCookies(u, doomed)
 }

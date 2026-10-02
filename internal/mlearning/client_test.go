@@ -107,8 +107,10 @@ func TestCleanToken(t *testing.T) {
 // Authorization header.
 type tokenStub struct {
 	chainRuns int
-	apiAuths  []string
-	srv       *httptest.Server
+	// chainCookies records the Cookie header each chain run arrived with.
+	chainCookies []string
+	apiAuths     []string
+	srv          *httptest.Server
 	// forscan500 makes the trigger page plant the token cookie and then
 	// answer 500, mirroring the real forscan page's behavior.
 	forscan500 bool
@@ -122,6 +124,7 @@ func newTokenStub(t *testing.T, respond func(auth string) string) (*Client, *tok
 	stub.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, forscanPath) {
 			stub.chainRuns++
+			stub.chainCookies = append(stub.chainCookies, r.Header.Get("Cookie"))
 			http.SetCookie(w, &http.Cookie{Name: "token", Value: "fresh-token", Path: "/"})
 			if stub.forscan500 {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -196,6 +199,43 @@ func TestGetPassesThroughPersistentRejection(t *testing.T) {
 	}
 }
 
+// TestRechainStartsFromCleanJar is the regression test for the
+// re-authentication deadlock: a dead token triggers a chain re-run, and
+// cookies planted by earlier chains must not ride along — the live service
+// answers such a visit with an immediate 500 instead of opening the SSO
+// redirect chain, which permanently broke re-authentication until restart.
+// The credential cookie stays: it is what the chain authenticates with.
+func TestRechainStartsFromCleanJar(t *testing.T) {
+	client, stub := newTokenStub(t, func(auth string) string {
+		if auth == "fresh-token" {
+			return `{"resultCode":"200","body":{"ok":true}}`
+		}
+		return `{"resultCode":"10001","body":null}`
+	})
+	u, err := url.Parse(stub.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Residue from an earlier chain, plus the credential that must survive.
+	client.sess.SeedCookie("JSESSIONID", "stale-session", u.Hostname())
+	client.sess.SeedCookie(jaAuthCookieName, "cred", u.Hostname())
+
+	// The first get rides the stale token into the 10001, rechains, retries.
+	if _, err := client.get(context.Background(), "/x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.chainCookies) != 1 {
+		t.Fatalf("chain ran %d times, want 1", len(stub.chainCookies))
+	}
+	got := stub.chainCookies[0]
+	if strings.Contains(got, "JSESSIONID") || strings.Contains(got, "stale-token") {
+		t.Fatalf("residue rode the chain: Cookie %q", got)
+	}
+	if !strings.Contains(got, jaAuthCookieName+"=cred") {
+		t.Fatalf("credential cookie missing from chain: Cookie %q", got)
+	}
+}
+
 // TestGetKeepsLiveToken guards the fast path: a working token triggers no
 // chain run and the response passes through untouched.
 func TestGetKeepsLiveToken(t *testing.T) {
@@ -225,7 +265,7 @@ func TestChainToleratesTerminalPageFailure(t *testing.T) {
 		return `{"resultCode":"200","body":{}}`
 	})
 	stub.forscan500 = true
-	client.clearToken() // force the chain despite the pre-planted stale token
+	client.sess.ClearCookies(stub.srv.URL + "/") // force the chain despite the pre-planted stale token
 	raw, err := client.get(context.Background(), "/x")
 	if err != nil {
 		t.Fatal(err)
