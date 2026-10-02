@@ -58,6 +58,12 @@ type Client struct {
 
 	mu       sync.Mutex
 	warmedUp bool // Canvas web session established via openid_connect
+
+	// launchMu serializes whole launch chains. The minted jwt is
+	// single-purpose and never cached, so concurrent callers cannot share a
+	// chain's product; serialization is what stops a cold-start burst from
+	// firing parallel SSO chains at jaccount.
+	launchMu sync.Mutex
 }
 
 // New builds a Client over the given cookie session; the session must carry
@@ -86,6 +92,9 @@ const canvasLoginURL = canvasBaseURL + "/login/openid_connect"
 // launch runs the full chain for one course. It is intentionally called by
 // every public API method: the jwt-token is single-purpose and short-lived.
 func (c *Client) launch(ctx context.Context, courseID int64) (*launchState, error) {
+	c.launchMu.Lock()
+	defer c.launchMu.Unlock()
+
 	if err := c.warmup(ctx); err != nil {
 		return nil, err
 	}
