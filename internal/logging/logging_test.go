@@ -9,7 +9,7 @@ import (
 )
 
 // TestRotation pins the single-backup rotation: an oversized sjtu.log is
-// renamed to sjtu.log.1 (replacing any older backup) before appending
+// renamed to sjtu.log.bak (replacing any older backup) before appending
 // resumes.
 func TestRotation(t *testing.T) {
 	dir := t.TempDir()
@@ -21,17 +21,17 @@ func TestRotation(t *testing.T) {
 	if err := os.WriteFile(logPath, make([]byte, maxLogSize+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(logPath+".1", []byte("older backup"), 0o600); err != nil {
+	if err := os.WriteFile(logPath+".bak", []byte("older backup"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	close, err := Setup()
+	close, err := Setup(CLILogName)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 	defer close()
 
-	backup, err := os.Stat(logPath + ".1")
+	backup, err := os.Stat(logPath + ".bak")
 	if err != nil {
 		t.Fatalf("backup missing: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestSetupWritesToFile(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", dir)
 	t.Setenv("SJTU_LOG_LEVEL", "warn")
 
-	close, err := Setup()
+	close, err := Setup(CLILogName)
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}

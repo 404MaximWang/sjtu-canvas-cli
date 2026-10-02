@@ -15,7 +15,11 @@ import (
 // into the command context, and runs the command tree. Logs land exclusively
 // in the state directory; stdout carries only command results.
 func main() {
-	closeLog, err := logging.Setup()
+	logName := logging.CLILogName
+	if len(os.Args) > 1 && os.Args[1] == "daemon" {
+		logName = logging.DaemonLogName
+	}
+	closeLog, err := logging.Setup(logName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"error":"logging_unavailable","hint":%q}`+"\n", err.Error())
 		os.Exit(1)

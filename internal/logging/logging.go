@@ -2,9 +2,9 @@
 // appended to the state-directory log file with single-backup rotation,
 // wrapped in credential redaction.
 //
-// Logs go exclusively to ~/.local/state/sjtu/sjtu.log; stdout and stderr
-// are reserved for command output and structured errors, so log records
-// can never contaminate machine-readable output.
+// Logs go exclusively to the state directory (~/.local/state/sjtu); stdout
+// and stderr are reserved for command output and structured errors, so log
+// records can never contaminate machine-readable output.
 package logging
 
 import (
@@ -20,18 +20,18 @@ import (
 const (
 	// maxLogSize is the rotation threshold for the active log file.
 	maxLogSize = 4 << 20 // 4 MB
-	// logName is the active log file inside the state directory.
-	logName = "sjtu.log"
-	// backupName is the single rotated backup kept beside the active log.
-	backupName = "sjtu.log.1"
+	// CLILogName is the CLI's log file inside the state directory.
+	CLILogName = "sjtu.log"
+	// DaemonLogName is the daemon's log file beside the CLI's.
+	DaemonLogName = "sjtud.log"
 )
 
-// Setup installs the default slog logger writing to the state-directory log
-// file and returns a function that closes it. The minimum level comes from
-// SJTU_LOG_LEVEL (debug|info|warn|error), defaulting to warn. When the
-// existing log already exceeds 4 MB it is renamed to sjtu.log.1, replacing
-// any previous backup: exactly one backup is kept.
-func Setup() (close func() error, err error) {
+// Setup installs the default slog logger writing to the named file in the
+// state directory and returns a function that closes it. The minimum level
+// comes from SJTU_LOG_LEVEL (debug|info|warn|error), defaulting to warn.
+// When the existing log already exceeds 4 MB it is renamed to name+".bak",
+// replacing any previous backup: exactly one backup is kept.
+func Setup(name string) (close func() error, err error) {
 	dir, err := StateDir()
 	if err != nil {
 		return nil, err
@@ -39,9 +39,9 @@ func Setup() (close func() error, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create state dir: %w", err)
 	}
-	path := filepath.Join(dir, logName)
+	path := filepath.Join(dir, name)
 	if st, err := os.Stat(path); err == nil && st.Size() >= maxLogSize {
-		if err := os.Rename(path, filepath.Join(dir, backupName)); err != nil {
+		if err := os.Rename(path, path+".bak"); err != nil {
 			return nil, fmt.Errorf("rotate log: %w", err)
 		}
 	}
