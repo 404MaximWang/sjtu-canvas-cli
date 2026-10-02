@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/cli"
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/logging"
@@ -26,7 +27,7 @@ func main() {
 	}
 	defer closeLog()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	os.Exit(cli.Execute(ctx, os.Args[1:], os.Stdout, os.Stderr))

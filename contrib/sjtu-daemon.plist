@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- sjtu daemon — launchd agent template.
+     Install:  cp <this file> ~/Library/LaunchAgents/cn.edu.sjtu.sjtud.plist
+               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/cn.edu.sjtu.sjtud.plist
+     Adjust the ProgramArguments path to the installed sjtu binary. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>cn.edu.sjtu.sjtud</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/sjtu</string>
+		<string>daemon</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<!-- Restart=on-failure equivalent: relaunch only when the exit was abnormal. -->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+</dict>
+</plist>
