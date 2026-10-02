@@ -50,7 +50,7 @@ var credentialDomain = map[string]string{
 
 // ErrProbeUnconfigured marks a probe that cannot run for missing
 // configuration; the domain reports unknown, never fail.
-var ErrProbeUnconfigured = errors.New("probe.videoCourseID not configured")
+var ErrProbeUnconfigured = errors.New("probe.video_course_id not configured")
 
 // authFailure wraps a probe failure that blames dead credentials.
 type authFailure struct{ err error }

@@ -86,6 +86,15 @@ main() {
   chmod +x "${INSTALL_DIR}/sjtu"
 
   echo "Successfully installed sjtu (${TAG}) to ${INSTALL_DIR}/sjtu"
+
+  CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/sjtu"
+  CONFIG_FILE="${CONFIG_DIR}/config.json"
+  if [ ! -f "$CONFIG_FILE" ]; then
+    mkdir -p "$CONFIG_DIR"
+    printf '{\n  "canvas_base_url": "https://oc.sjtu.edu.cn",\n  "probe": {\n    "video_course_id": 0\n  },\n  "notify": {\n    "command": []\n  }\n}\n' > "$CONFIG_FILE"
+    echo "Initialized default config at ${CONFIG_FILE}"
+  fi
+
   echo "Please log in and fill in the configuration before using."
   echo "You can start a daemon in the foreground using 'sjtu daemon'."
   echo "Register systemd/launchd service using 'sjtu daemon install'."
