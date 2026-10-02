@@ -25,6 +25,18 @@ import (
 // (see .github/workflows/release.yml); everything else reports "dev".
 var Version = "dev"
 
+// newVersionCmd builds `sjtu version`: the running binary's version as JSON.
+func newVersionCmd(stdout io.Writer) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the sjtu version",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return writeJSON(stdout, map[string]any{"version": Version})
+		},
+	}
+}
+
 // releaseRepo is the GitHub repository hosting the release artifacts.
 const releaseRepo = "404MaximWang/sjtu-canvas-cli"
 
