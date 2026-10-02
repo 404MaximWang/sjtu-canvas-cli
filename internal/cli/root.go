@@ -126,6 +126,7 @@ func newRootCmd(rt *Runtime, stdout, stderr io.Writer) *cobra.Command {
 	root.AddCommand(newAttendanceCmd(rt, stdout))
 	root.AddCommand(newUpdateCmd(stdout, stderr))
 	root.AddCommand(newDaemonCmd(rt, stdout, stderr))
+	root.AddCommand(newDocsCmd(stdout))
 	root.AddCommand(&cobra.Command{
 		Use:   "tui",
 		Short: "Enter the interactive shell",
