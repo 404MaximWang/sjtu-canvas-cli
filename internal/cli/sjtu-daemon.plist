@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- sjtu daemon — launchd agent template.
-     Install:  cp <this file> ~/Library/LaunchAgents/cn.edu.sjtu.sjtud.plist
-               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/cn.edu.sjtu.sjtud.plist
-     Adjust the ProgramArguments path to the installed sjtu binary. -->
+<!-- sjtu daemon — launchd agent definition.
+     Embedded into the sjtu binary; `sjtu daemon install` renders it with the
+     resolved absolute path of the running binary and bootstraps the agent. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -10,7 +9,7 @@
 	<string>cn.edu.sjtu.sjtud</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/local/bin/sjtu</string>
+		<string>{{BINARY_PATH}}</string>
 		<string>daemon</string>
 	</array>
 	<key>RunAtLoad</key>

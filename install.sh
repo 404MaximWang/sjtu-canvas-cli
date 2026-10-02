@@ -86,6 +86,9 @@ main() {
   chmod +x "${INSTALL_DIR}/sjtu"
 
   echo "Successfully installed sjtu (${TAG}) to ${INSTALL_DIR}/sjtu"
+  echo "Please log in and fill in the configuration before using."
+  echo "You can start a daemon in the foreground using 'sjtu daemon'."
+  echo "Register systemd/launchd service using 'sjtu daemon install'."
 
   case ":$PATH:" in
     *":${INSTALL_DIR}:"*) ;;

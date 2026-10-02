@@ -1,13 +1,13 @@
-# sjtu daemon — systemd user service template.
-# Install:  systemctl --user link <this file> && systemctl --user enable --now sjtu-daemon
-# Adjust ExecStart to the installed sjtu binary path.
+# sjtu daemon — systemd user service definition.
+# Embedded into the sjtu binary; `sjtu daemon install` renders it with the
+# resolved absolute path of the running binary and enables the service.
 [Unit]
 Description=sjtu daemon (SJTU online services local command server)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=%h/.local/bin/sjtu daemon
+ExecStart={{BINARY_PATH}} daemon
 Restart=on-failure
 # The daemon itself waits at most 5 s for in-flight requests on SIGTERM;
 # allow 15 s before SIGKILL.

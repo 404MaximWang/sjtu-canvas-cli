@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/daemon"
@@ -8,8 +10,8 @@ import (
 
 // newDaemonCmd builds `sjtu daemon`: the long-running local service
 // executing the same command tree over a unix socket.
-func newDaemonCmd(rt *Runtime) *cobra.Command {
-	return &cobra.Command{
+func newDaemonCmd(rt *Runtime, stdout, stderr io.Writer) *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Run the local daemon serving commands over a unix socket",
 		Args:  cobra.NoArgs,
@@ -21,4 +23,7 @@ func newDaemonCmd(rt *Runtime) *cobra.Command {
 			return daemon.Run(cmd.Context(), hooks)
 		},
 	}
+	cmd.AddCommand(newDaemonInstallCmd(rt, stdout, stderr))
+	cmd.AddCommand(newDaemonUninstallCmd(stdout, stderr))
+	return cmd
 }
