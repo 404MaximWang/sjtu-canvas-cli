@@ -109,6 +109,9 @@ type tokenStub struct {
 	chainRuns int
 	apiAuths  []string
 	srv       *httptest.Server
+	// forscan500 makes the trigger page plant the token cookie and then
+	// answer 500, mirroring the real forscan page's behavior.
+	forscan500 bool
 }
 
 // newTokenStub builds a Client pointed at a stub server, with a stale
@@ -120,6 +123,11 @@ func newTokenStub(t *testing.T, respond func(auth string) string) (*Client, *tok
 		if strings.HasPrefix(r.URL.Path, forscanPath) {
 			stub.chainRuns++
 			http.SetCookie(w, &http.Cookie{Name: "token", Value: "fresh-token", Path: "/"})
+			if stub.forscan500 {
+				w.WriteHeader(http.StatusInternalServerError)
+				io.WriteString(w, "<html><title>We're sorry</title></html>")
+				return
+			}
 			io.WriteString(w, "<html></html>")
 			return
 		}
@@ -206,5 +214,29 @@ func TestGetKeepsLiveToken(t *testing.T) {
 	}
 	if len(stub.apiAuths) != 1 || stub.apiAuths[0] != "stale-token" {
 		t.Fatalf("API authorizations %v, want [stale-token]", stub.apiAuths)
+	}
+}
+
+// TestChainToleratesTerminalPageFailure pins the SSO tolerance: the forscan
+// page 500s after the callback planted the token cookie, and the chain
+// still succeeds because the jar proves the cookie landed.
+func TestChainToleratesTerminalPageFailure(t *testing.T) {
+	client, stub := newTokenStub(t, func(string) string {
+		return `{"resultCode":"200","body":{}}`
+	})
+	stub.forscan500 = true
+	client.clearToken() // force the chain despite the pre-planted stale token
+	raw, err := client.get(context.Background(), "/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"resultCode":"200","body":{}}`; string(raw) != want {
+		t.Fatalf("got %s, want %s", raw, want)
+	}
+	if stub.chainRuns != 1 {
+		t.Fatalf("SSO chain ran %d times, want 1", stub.chainRuns)
+	}
+	if len(stub.apiAuths) != 1 || stub.apiAuths[0] != "fresh-token" {
+		t.Fatalf("API authorizations %v, want [fresh-token]", stub.apiAuths)
 	}
 }

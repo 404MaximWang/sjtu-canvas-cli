@@ -188,10 +188,21 @@ func (c *Client) token(ctx context.Context) (string, error) {
 }
 
 // sso visits one mlearning URL with redirect following, running the SSO
-// chain that plants the token cookie as a side effect.
+// chain that plants the token cookie as a side effect. The terminal
+// forscan page 500s as a matter of course (the QR parameters may be
+// fabricated), but the callback plants the token cookie before that page
+// loads — so an HTTP error late in the chain is tolerated when the jar
+// proves the cookie landed. A dead JAAuthCookie still surfaces as ErrAuth:
+// its chain ends on the login page, which answers 200.
 func (c *Client) sso(ctx context.Context, rawURL string) error {
 	_, finalURL, err := c.sess.GetHTML(ctx, rawURL)
 	if err != nil {
+		var httpErr *session.HTTPError
+		if errors.As(err, &httpErr) {
+			if _, ok := c.sess.Cookie(c.base+"/", "token"); ok {
+				return nil
+			}
+		}
 		return err
 	}
 	if u, err := url.Parse(finalURL); err == nil && u.Host == jaccountHost {
