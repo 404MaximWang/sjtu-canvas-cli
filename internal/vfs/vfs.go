@@ -17,8 +17,9 @@
 //	/courses/<courseID>/attendance/         status, current and records
 //	                                        projections (TTL=0 realtime)
 //	/courses/<courseID>/replay/<videoID>/   one directory per recording: info,
-//	                                        url, subtitle, summary projections
-//	                                        plus one video-N byte node per view
+//	                                        url, subtitle, ppt, summary
+//	                                        projections plus one video-N byte
+//	                                        node per view
 //	/courses/<courseID>/replay/<MM-DD>-<N>  symlink → replay/<videoID>
 //	/courses/<courseID>/live/<sessionID>/   one directory per live session:
 //	                                        info plus one .flv URL file per channel

@@ -99,6 +99,39 @@ func TestAPIData(t *testing.T) {
 	}
 }
 
+// TestParsePPT checks the non-empty docList contract and its malformed-data
+// boundaries.
+func TestParsePPT(t *testing.T) {
+	raw, err := parsePPT(map[string]any{"docList": []any{
+		map[string]any{"imageSeekTime": 0, "imageUrl": "https://live.example/slide-1.png", "ocrText": "极限"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0]["imageSeekTime"].(float64) != 0 ||
+		got[0]["imageUrl"] != "https://live.example/slide-1.png" || got[0]["ocrText"] != "极限" {
+		t.Fatalf("docList %v", got)
+	}
+
+	cases := map[string]map[string]any{
+		"missing docList": {},
+		"null docList":    {"docList": nil},
+		"empty docList":   {"docList": []any{}},
+		"object docList":  {"docList": map[string]any{}},
+	}
+	for name, data := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parsePPT(data); err == nil {
+				t.Fatal("want ppt unavailable error")
+			}
+		})
+	}
+}
+
 // TestParseReplays checks the pinned-field decoding: real key names only,
 // daily lesson numbering, and hard errors on missing id/courBeginTime.
 func TestParseReplays(t *testing.T) {

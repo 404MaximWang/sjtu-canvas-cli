@@ -82,6 +82,11 @@ func (videoAuthSource) Subtitle(context.Context, int64, int64) (json.RawMessage,
 	return nil, errVideoAuth
 }
 
+// PPT reports the missing-credential error.
+func (videoAuthSource) PPT(context.Context, int64, int64) (json.RawMessage, error) {
+	return nil, errVideoAuth
+}
+
 // Summary reports the missing-credential error.
 func (videoAuthSource) Summary(context.Context, int64, int64) (json.RawMessage, error) {
 	return nil, errVideoAuth

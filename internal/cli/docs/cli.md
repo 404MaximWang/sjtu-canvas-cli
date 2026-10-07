@@ -64,6 +64,7 @@
 /courses/<id>/replay/<录像id>/url          # {"views":[{"viewNum","url"}],"headers":{...}}
 /courses/<id>/replay/<录像id>/video-N      # 第 N 路视角媒体流（N 为 viewNum 实测值，不假定连续编号）
 /courses/<id>/replay/<录像id>/subtitle     # 字幕投影：[{"bg","ed","res"}]，毫秒偏移
+/courses/<id>/replay/<录像id>/ppt          # 课件切片投影：[{"imageSeekTime","imageUrl","ocrText",...}]，imageSeekTime 为秒级播放偏移
 /courses/<id>/replay/<录像id>/summary      # 概括投影：{summary, mindmap}
 /courses/<id>/replay/<MM-DD>-<N>           # 软链接 → 录像 ID（月-日-当日讲次）
 ```
@@ -71,7 +72,7 @@
 规则：
 
 - 学期目录仅匹配格式符合 `YYYY-YYYY Fall|Spring|Summer` 的规范学期；命名不合规的课程仅按 ID 可达，不做模式猜测。
-- 录像未就绪（`vodStatus` 非可播放状态）时，读取 `url` 与 `video-N` 返回结构化错误；`subtitle`/`summary` 是否可用取决于上游接口。
+- 录像未就绪（`vodStatus` 非可播放状态）时，读取 `url` 与 `video-N` 返回结构化错误；`subtitle`/`ppt`/`summary` 是否可用取决于上游接口。
 - 元数据列表维护多级 TTL 磁盘缓存（`~/.cache/sjtu/meta`）；**文件内容永不缓存**；attendance（签到）节点不缓存（TTL=0，每次实时拉取）。
 - `video-N` 的大小在进入所在目录时惰性探测；支持 Range 请求的媒体节点支持并行下载。
 

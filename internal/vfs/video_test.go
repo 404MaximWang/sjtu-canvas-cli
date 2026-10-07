@@ -39,6 +39,11 @@ func (f *fakeVideoSource) Subtitle(context.Context, int64, int64) (json.RawMessa
 	return json.RawMessage(`[{"bg":0,"ed":1500,"res":"大家好"}]`), nil
 }
 
+// PPT implements VideoSource.
+func (f *fakeVideoSource) PPT(context.Context, int64, int64) (json.RawMessage, error) {
+	return json.RawMessage(`[{"imageSeekTime":0,"imageUrl":"https://live.example/slide-1.png"}]`), nil
+}
+
 // Summary implements VideoSource.
 func (f *fakeVideoSource) Summary(context.Context, int64, int64) (json.RawMessage, error) {
 	return json.RawMessage(`{"summary":"概要","mindmap":{}}`), nil
@@ -173,6 +178,22 @@ func TestReplayTree(t *testing.T) {
 	}
 	if urlDoc.Headers["Referer"] == "" {
 		t.Fatal("headers missing Referer")
+	}
+
+	// ppt projection: docList entries are exposed verbatim
+	data, err = fs.ReadFile(fsys, "courses/10001/replay/111/ppt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ppt []struct {
+		ImageSeekTime int64  `json:"imageSeekTime"`
+		ImageURL      string `json:"imageUrl"`
+	}
+	if err := json.Unmarshal(data, &ppt); err != nil {
+		t.Fatal(err)
+	}
+	if len(ppt) != 1 || ppt[0].ImageSeekTime != 0 || ppt[0].ImageURL != "https://live.example/slide-1.png" {
+		t.Fatalf("ppt %+v", ppt)
 	}
 
 	// video-N nodes are named by the real viewNum values, sizes probed

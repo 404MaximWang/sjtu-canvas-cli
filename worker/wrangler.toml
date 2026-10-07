@@ -1,0 +1,9 @@
+name = "mahiro-soft"
+main = "index.js"
+compatibility_date = "2026-10-01"
+account_id = "d55bd952c169c7b2f68292f8c9f1a496"
+
+# Custom domain binding for soft.mahiro.ink
+routes = [
+  { pattern = "soft.mahiro.ink", custom_domain = true }
+]

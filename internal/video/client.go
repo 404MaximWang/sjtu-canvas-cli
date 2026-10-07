@@ -307,6 +307,42 @@ func (c *Client) Subtitle(ctx context.Context, courseID int64, replayID int64) (
 	return out, nil
 }
 
+// PPT fetches the slide snapshots of one replay as the raw docList JSON
+// array ([{imageSeekTime, imageUrl, ocrText, ...}], imageSeekTime in
+// seconds of playback offset). imageSnapshotTime is a wall-clock
+// placeholder, not the playback offset.
+func (c *Client) PPT(ctx context.Context, courseID int64, replayID int64) (json.RawMessage, error) {
+	l, err := c.launch(ctx, courseID)
+	if err != nil {
+		return nil, err
+	}
+	var raw json.RawMessage
+	err = c.sess.DoJSONWith(ctx, http.MethodGet,
+		resourceManageBaseURL+"/v1/course/ai/ppt?courseId="+strconv.FormatInt(replayID, 10),
+		l.apiHeaders(), &raw)
+	if err != nil {
+		return nil, err
+	}
+	data, err := apiData(raw)
+	if err != nil {
+		return nil, fmt.Errorf("ppt unavailable: %w", err)
+	}
+	return parsePPT(data)
+}
+
+// parsePPT extracts the non-empty docList array from one API data object.
+func parsePPT(data map[string]any) (json.RawMessage, error) {
+	list, ok := data["docList"].([]any)
+	if !ok || len(list) == 0 {
+		return nil, errors.New("ppt unavailable")
+	}
+	out, err := json.Marshal(list)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Summary fetches the AI summary of one replay as raw JSON with the
 // summary (plain text) and mindmap (knowledge tree) fields of data.
 func (c *Client) Summary(ctx context.Context, courseID int64, replayID int64) (json.RawMessage, error) {

@@ -21,6 +21,7 @@ type VideoSource interface {
 	Replays(ctx context.Context, courseID int64) ([]video.Replay, error)
 	ReplayViews(ctx context.Context, courseID int64, replayID int64) ([]video.View, error)
 	Subtitle(ctx context.Context, courseID int64, replayID int64) (json.RawMessage, error)
+	PPT(ctx context.Context, courseID int64, replayID int64) (json.RawMessage, error)
 	Summary(ctx context.Context, courseID int64, replayID int64) (json.RawMessage, error)
 	LiveSessions(ctx context.Context, courseID int64) ([]video.LiveSession, error)
 	LiveChannels(ctx context.Context, courseID, sessionID int64) ([]video.LiveChannel, error)
@@ -137,9 +138,9 @@ func replayInfo(r video.Replay) map[string]any {
 }
 
 // replayChildren loads one replay directory: the info projection eagerly,
-// url/subtitle/summary lazily, and one media node per view. Entering the
-// directory of a playable replay costs one ReplayViews call plus one size
-// probe per view.
+// url/subtitle/ppt/summary lazily, and one media node per view. Entering
+// the directory of a playable replay costs one ReplayViews call plus one
+// size probe per view.
 func (f *FS) replayChildren(courseID int64, r video.Replay) func() ([]node, error) {
 	return func() ([]node, error) {
 		info, err := jsonFileNode("info", replayInfo(r), "")
@@ -150,7 +151,7 @@ func (f *FS) replayChildren(courseID int64, r video.Replay) func() ([]node, erro
 
 		if !r.Playable() {
 			// url/video reads of non-ready replays fail with a structured
-			// error; subtitle/summary stay live and let the API decide.
+			// error; subtitle/ppt/summary stay live and let the API decide.
 			children = append(children, node{
 				name: "url",
 				mode: 0o444,
@@ -173,6 +174,7 @@ func (f *FS) replayChildren(courseID int64, r video.Replay) func() ([]node, erro
 
 		children = append(children,
 			f.projectionNode("subtitle", func() (json.RawMessage, error) { return f.video.Subtitle(f.ctx, courseID, r.ID) }),
+			f.projectionNode("ppt", func() (json.RawMessage, error) { return f.video.PPT(f.ctx, courseID, r.ID) }),
 			f.projectionNode("summary", func() (json.RawMessage, error) { return f.video.Summary(f.ctx, courseID, r.ID) }),
 		)
 		sortNodes(children)
