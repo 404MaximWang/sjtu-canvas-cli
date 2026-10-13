@@ -130,11 +130,6 @@ func (attendanceAuthSource) Status(context.Context, int64) (json.RawMessage, err
 	return nil, errAttendanceAuth
 }
 
-// Current reports the missing-credential error.
-func (attendanceAuthSource) Current(context.Context, int64) (json.RawMessage, error) {
-	return nil, errAttendanceAuth
-}
-
 // Records reports the missing-credential error.
 func (attendanceAuthSource) Records(context.Context, int64) (json.RawMessage, error) {
 	return nil, errAttendanceAuth

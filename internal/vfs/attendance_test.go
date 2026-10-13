@@ -31,11 +31,6 @@ func (s *fakeAttendanceSource) Status(context.Context, int64) (json.RawMessage, 
 	return s.fetch("status")
 }
 
-// Current implements AttendanceSource.
-func (s *fakeAttendanceSource) Current(context.Context, int64) (json.RawMessage, error) {
-	return s.fetch("current")
-}
-
 // Records implements AttendanceSource.
 func (s *fakeAttendanceSource) Records(context.Context, int64) (json.RawMessage, error) {
 	return s.fetch("records")
@@ -53,7 +48,6 @@ func TestAttendanceNodes(t *testing.T) {
 	src := &fakeAttendanceSource{
 		payloads: map[string]json.RawMessage{
 			"status":  json.RawMessage(`{"resultCode":"200","body":{}}`),
-			"current": json.RawMessage(`{"curricula":[]}`),
 			"records": json.RawMessage(`{"resultCode":"200","body":{"records":[]}}`),
 		},
 		calls: map[string]int{},
@@ -68,7 +62,7 @@ func TestAttendanceNodes(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	want := []string{"current", "records", "status"}
+	want := []string{"records", "status"}
 	if len(names) != len(want) {
 		t.Fatalf("entries = %v", names)
 	}

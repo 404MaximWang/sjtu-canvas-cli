@@ -14,8 +14,8 @@
 //	/courses/<courseID>/files/              the course's native file tree
 //	/courses/<courseID>/assignments/<id>/   one directory per assignment:
 //	                                        info plus submissions/latest
-//	/courses/<courseID>/attendance/         status, current and records
-//	                                        projections (TTL=0 realtime)
+//	/courses/<courseID>/attendance/         status and records projections
+//	                                        (TTL=0 realtime)
 //	/courses/<courseID>/replay/<videoID>/   one directory per recording: info,
 //	                                        url, subtitle, ppt, summary
 //	                                        projections plus one video-N byte

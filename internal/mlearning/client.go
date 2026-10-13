@@ -1,6 +1,6 @@
 // Package mlearning implements the mlearning.sjtu.edu.cn attendance
 // endpoints: the SSO chain that plants the domain's Access_Token cookie,
-// the three read projections behind /courses/<id>/attendance, and the
+// the two read projections behind /courses/<id>/attendance, and the
 // scan-submit write of `sjtu attendance submit`.
 //
 // Token model: a JAAuthCookie-authenticated visit to any forscan URL rides
@@ -70,12 +70,6 @@ func New(sess *session.Session) *Client {
 // existentB response (idle state: {"resultCode":"200","body":{}}).
 func (c *Client) Status(ctx context.Context, courseID int64) (json.RawMessage, error) {
 	return c.get(ctx, "/lms-lti-rollcall-sjtu/rollcall/existentB?courseCode="+strconv.FormatInt(courseID, 10))
-}
-
-// Current reports whether the course is in session right now, as the raw
-// barrage2 current response (an empty curricula array means no class).
-func (c *Client) Current(ctx context.Context, courseID int64) (json.RawMessage, error) {
-	return c.get(ctx, "/lms-interactive_barrage2/api/jwb/current?cids[]="+strconv.FormatInt(courseID, 10))
 }
 
 // Records lists the caller's sign-in records of the course, as the raw

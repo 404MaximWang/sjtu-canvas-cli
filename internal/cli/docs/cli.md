@@ -55,9 +55,8 @@
 /courses/<id>/assignments/<n>/info         # 作业投影；若存在已提交作业，则包含 submissions/latest
 /courses/<id>/discussions/<n>/info         # 讨论投影
 /courses/<id>/files/...                    # 课程文件树（目录/文件原样映射）
-/courses/<id>/attendance/current           # 进行中的点名（TTL=0，每次打开实时取）
 /courses/<id>/attendance/records           # 历史签到记录（TTL=0）
-/courses/<id>/attendance/status            # 签到状态（TTL=0）
+/courses/<id>/attendance/status            # 当前是否有进行中的点名（TTL=0）
 /courses/<id>/live/<场次id>/info           # 直播场次投影
 /courses/<id>/live/<场次id>/<频道>         # JSON：{"url":..., "headers":{"Referer":...}}
 /courses/<id>/replay/<录像id>/info         # 录像投影：名称/周次/时间/时长/vodStatus
