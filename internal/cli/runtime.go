@@ -173,7 +173,11 @@ func (r *Runtime) openVFS(ctx context.Context, lenient bool) (*vfs.FS, *canvas.C
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return vfs.New(ctx, src, ja.videoSource(), ja.attendanceSource()), client, token != "", nil
+	videoSrc, err := vfs.NewCachedVideoSource(ja.videoSource())
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return vfs.New(ctx, src, videoSrc, ja.attendanceSource()), client, token != "", nil
 }
 
 // submitAttendance implements `sjtu attendance submit` over the shared

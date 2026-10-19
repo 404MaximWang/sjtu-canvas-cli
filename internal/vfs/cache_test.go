@@ -3,6 +3,7 @@ package vfs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/404MaximWang/sjtu-canvas-cli/internal/canvas"
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/video"
 )
 
 // countingSource wraps fakeSource and counts Courses fetches.
@@ -157,5 +159,50 @@ func TestWriteCacheFileConcurrent(t *testing.T) {
 			names = append(names, e.Name())
 		}
 		t.Fatalf("temp files leaked: %v", names)
+	}
+}
+
+// TestCachedVideoSource pins the video list cache contract: one fetch per TTL
+// window, and a failing fetch is never cached.
+func TestCachedVideoSource(t *testing.T) {
+	inner := &countingVideoSource{fakeVideoSource: fakeVideoSource{
+		replays: []video.Replay{{ID: 111, VodStatus: 5, Status: "ready"}},
+	}}
+	now := time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC)
+	cs := &CachedVideoSource{inner: inner, cacheStore: cacheStore{
+		dir: t.TempDir(),
+		now: func() time.Time { return now },
+	}}
+	ctx := context.Background()
+
+	if _, err := cs.Replays(ctx, 10001); err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+	if _, err := cs.Replays(ctx, 10001); err != nil {
+		t.Fatalf("cached fetch: %v", err)
+	}
+	if inner.replayCalls != 1 {
+		t.Errorf("fresh cache refetched; calls = %d, want 1", inner.replayCalls)
+	}
+
+	now = now.Add(TTLVideoLists + time.Minute)
+	if _, err := cs.Replays(ctx, 10001); err != nil {
+		t.Fatalf("post-expiry fetch: %v", err)
+	}
+	if inner.replayCalls != 2 {
+		t.Errorf("expired cache not refetched; calls = %d, want 2", inner.replayCalls)
+	}
+
+	inner.replayErr = errors.New("upstream unavailable")
+	now = now.Add(TTLVideoLists + time.Minute)
+	if _, err := cs.Replays(ctx, 10001); err == nil {
+		t.Fatal("failing fetch returned no error")
+	}
+	inner.replayErr = nil
+	if _, err := cs.Replays(ctx, 10001); err != nil {
+		t.Fatalf("fetch after failure: %v", err)
+	}
+	if inner.replayCalls != 4 {
+		t.Errorf("failure was cached; calls = %d, want 4", inner.replayCalls)
 	}
 }
