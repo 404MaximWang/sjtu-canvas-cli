@@ -4,42 +4,16 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual runs build and package only; the release job is tag-gated.
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
     name: Quality and Test Gate
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-
-      - name: Check Formatting (gofmt)
-        run: |
-          diffs=$(gofmt -l .)
-          if [ -n "$diffs" ]; then
-            echo "The following files are not formatted with gofmt:"
-            echo "$diffs"
-            exit 1
-          fi
-
-      - name: Verify Dependencies
-        run: go mod verify
-
-      - name: Static Analysis (go vet)
-        run: go vet ./...
-
-      - name: Run Tests
-        run: go test -v -race ./...
+    uses: ./.github/workflows/ci.yml
 
   build:
     name: Build Binary
@@ -67,13 +41,21 @@ jobs:
           cache: true
 
       - name: Build and Package
+        env:
+          TARGET_OS: ${{ matrix.goos }}
+          TARGET_ARCH: ${{ matrix.goarch }}
+          BUILD_COMMIT: ${{ github.sha }}
         run: |
+          set -o pipefail
           VERSION="${GITHUB_REF_NAME:-dev}"
-          DIR="sjtu-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          DIR="sjtu-${VERSION}-${TARGET_OS}-${TARGET_ARCH}"
           mkdir -p "${DIR}"
-          CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -ldflags="-s -w -X github.com/404MaximWang/sjtu-canvas-cli/internal/cli.Version=${VERSION}" -o "${DIR}/sjtu" ./cmd/sjtu
-          tar -czvf "${DIR}.tar.gz" -C "${DIR}" sjtu
+          CGO_ENABLED=0 GOOS="${TARGET_OS}" GOARCH="${TARGET_ARCH}" \
+            go build -trimpath \
+              -ldflags="-s -w -X github.com/404MaximWang/sjtu-canvas-cli/internal/cli.Version=${VERSION} -X github.com/404MaximWang/sjtu-canvas-cli/internal/cli.Commit=${BUILD_COMMIT}" \
+              -o "${DIR}/sjtu" ./cmd/sjtu
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 --mode=0755 \
+            -cf - -C "${DIR}" sjtu | gzip -n > "${DIR}.tar.gz"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -84,7 +66,10 @@ jobs:
   release:
     name: Publish Release
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -95,10 +80,15 @@ jobs:
         run: sha256sum sjtu-*.tar.gz > checksums.txt
 
       - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            sjtu-*.tar.gz
-            checksums.txt
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" sjtu-*.tar.gz checksums.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              sjtu-*.tar.gz \
+              checksums.txt \
+              --generate-notes
+          fi

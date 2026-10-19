@@ -37,7 +37,7 @@
 | `sjtu docs [topic]` | 打印接口契约文档（本文即 `cli` 主题；另有 `daemon` 主题） |
 | `sjtu tui` | 交互式 TUI Shell（终端环境下自动进入） |
 | `sjtu update [--check]` | 检查并更新至 GitHub 最新版本 |
-| `sjtu version` | 打印当前版本号（JSON 格式） |
+| `sjtu version` | 打印当前版本与提交 SHA（JSON 格式） |
 | `sjtu completion <shell>` | 生成 Shell 自动补全脚本 |
 
 不带参数执行 `sjtu` 时，终端环境下进入 TUI，非终端（管道）环境下打印帮助信息。

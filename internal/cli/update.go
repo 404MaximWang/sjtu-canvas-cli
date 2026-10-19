@@ -20,10 +20,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is the single version declaration of the sjtu binary. Release
-// builds inject the git tag via -ldflags "-X .../cli.Version=<tag>"
-// (see .github/workflows/release.yml); everything else reports "dev".
-var Version = "dev"
+// Build metadata of the sjtu binary. Release builds inject both via
+// -ldflags "-X .../cli.Version=... -X .../cli.Commit=..."
+// (see .github/workflows/release.yml). A plain `go build` keeps the defaults
+// below.
+var (
+	Version = "dev"
+	Commit  = "unknown"
+)
 
 // newVersionCmd builds `sjtu version`: the running binary's version as JSON.
 func newVersionCmd(stdout io.Writer) *cobra.Command {
@@ -32,7 +36,10 @@ func newVersionCmd(stdout io.Writer) *cobra.Command {
 		Short: "Print the sjtu version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return writeJSON(stdout, map[string]any{"version": Version})
+			return writeJSON(stdout, map[string]any{
+				"version": Version,
+				"commit":  Commit,
+			})
 		},
 	}
 }
