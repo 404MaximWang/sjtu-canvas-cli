@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"io/fs"
 	"strings"
 	"testing"
+
+	"github.com/404MaximWang/sjtu-canvas-cli/internal/vfs"
 )
 
 // TestIsProjection pins the projection path shapes the TUI renders: entity
@@ -80,5 +83,35 @@ func TestHTMLToText(t *testing.T) {
 	want := "标题\n第一行\n第二行 & 更多"
 	if got := htmlToText(in); got != want {
 		t.Errorf("htmlToText = %q, want %q", got, want)
+	}
+}
+
+// TestRenderLs pins the ls output contract: the JSON field set, the type
+// classification, and symlink targets taken straight from the entry.
+func TestRenderLs(t *testing.T) {
+	entries := []vfs.DirEntry{
+		{Name: "announcements", Mode: fs.ModeDir | 0o555},
+		{Name: "09-28-1", Mode: fs.ModeSymlink | 0o777, Size: 27, Target: "/courses/10001/replay/111"},
+		{Name: "data.json", Mode: 0o444, Size: 12},
+	}
+
+	var out bytes.Buffer
+	if err := renderLs(entries, false, &out); err != nil {
+		t.Fatalf("renderLs: %v", err)
+	}
+	want := `[{"name":"announcements","type":"dir","size":0},` +
+		`{"name":"09-28-1","type":"link","size":27,"target":"/courses/10001/replay/111"},` +
+		`{"name":"data.json","type":"file","size":12}]` + "\n"
+	if out.String() != want {
+		t.Errorf("renderLs JSON = %s, want %s", out.String(), want)
+	}
+
+	out.Reset()
+	if err := renderLs(entries, true, &out); err != nil {
+		t.Fatalf("renderLs human: %v", err)
+	}
+	wantHuman := "announcements/\n09-28-1 -> /courses/10001/replay/111\ndata.json\n"
+	if out.String() != wantHuman {
+		t.Errorf("renderLs human = %q, want %q", out.String(), wantHuman)
 	}
 }

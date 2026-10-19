@@ -363,6 +363,51 @@ func (f *FS) ReadLink(name string) (string, error) {
 	return n.target, nil
 }
 
+// DirEntry is one entry of a directory listing. Unlike fs.DirEntry it carries
+// a symbolic link's target, so a caller reading every link of a directory
+// never has to resolve the same path once per entry.
+type DirEntry struct {
+	Name   string
+	Mode   fs.FileMode
+	Size   int64  // link targets report their path length
+	Target string // symbolic link destination, anchored at the fs root
+}
+
+// ListDir resolves name once and returns its entries sorted by name. It is
+// the listing path for callers that need symbolic link targets: asking for
+// one target at a time re-walks the path from the root and refetches every
+// directory on the way.
+func (f *FS) ListDir(name string) ([]DirEntry, error) {
+	n, err := f.resolve(name, true, 0)
+	if err != nil {
+		return nil, err
+	}
+	if !n.mode.IsDir() {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: errNotDirectory}
+	}
+	entries, err := n.children()
+	if err != nil {
+		return nil, wrapPathError("readdir", name, err)
+	}
+	out := make([]DirEntry, 0, len(entries))
+	for i := range entries {
+		e := &entries[i]
+		out = append(out, DirEntry{Name: e.name, Mode: e.mode, Size: e.size, Target: e.target})
+	}
+	return out, nil
+}
+
+// wrapPathError tags err with the failing operation and path, passing a
+// PathError from a directory listing through unchanged so the chain is never
+// wrapped twice.
+func wrapPathError(op, path string, err error) error {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return err
+	}
+	return &fs.PathError{Op: op, Path: path, Err: err}
+}
+
 // resolve walks name from the root. A symlink in a non-final position, or in
 // the final position when followFinal is set, is replaced by its target and
 // the walk restarts there. depth guards against symlink cycles.
@@ -384,7 +429,7 @@ func (f *FS) resolve(name string, followFinal bool, depth int) (*node, error) {
 		}
 		entries, err := cur.children()
 		if err != nil {
-			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+			return nil, wrapPathError("open", name, err)
 		}
 		var next *node
 		for j := range entries {
@@ -451,7 +496,7 @@ func (f *openFile) ReadDir(count int) ([]fs.DirEntry, error) {
 	}
 	entries, err := f.node.children()
 	if err != nil {
-		return nil, &fs.PathError{Op: "readdir", Path: f.path, Err: err}
+		return nil, wrapPathError("readdir", f.path, err)
 	}
 	n := len(entries) - f.dirPos
 	if n == 0 && count > 0 {

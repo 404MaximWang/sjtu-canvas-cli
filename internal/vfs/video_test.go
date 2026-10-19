@@ -3,6 +3,7 @@ package vfs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"strings"
@@ -75,13 +76,11 @@ func (f *fakeVideoSource) FetchRange(_ context.Context, rawURL string, begin, en
 	return io.NopCloser(strings.NewReader(content[begin : end+1])), nil
 }
 
-// newVideoTestFS builds an FS over one course with two replays (one ready,
-// one repairing) and one live session with two identically-named channels.
-func newVideoTestFS() *FS {
-	src := &fakeSource{
-		courses: []canvas.Course{{ID: 10001, Name: "数学分析"}},
-	}
-	fsys := New(context.Background(), src, &fakeVideoSource{
+// videoFixture returns the canned video data shared by the replay and live
+// tests: two replays (one ready, one repairing) and one live session with two
+// identically-named channels.
+func videoFixture() *fakeVideoSource {
+	return &fakeVideoSource{
 		replays: []video.Replay{
 			{ID: 111, SubjName: "数学", BeginTime: time.Date(2026, 9, 28, 8, 0, 0, 0, time.Local),
 				EndTime:    time.Date(2026, 9, 28, 9, 40, 0, 0, time.Local),
@@ -113,8 +112,15 @@ func newVideoTestFS() *FS {
 				{Name: "东上院312老师/课件", URL: "https://live.example/b.flv?auth_key=k2"},
 			},
 		},
-	}, nil)
-	return fsys
+	}
+}
+
+// newVideoTestFS builds an FS over one course backed by videoFixture.
+func newVideoTestFS() *FS {
+	src := &fakeSource{
+		courses: []canvas.Course{{ID: 10001, Name: "数学分析"}},
+	}
+	return New(context.Background(), src, videoFixture(), nil)
 }
 
 // TestReplayTree walks one course's replay tree: symlinks, projections,
@@ -354,5 +360,64 @@ func TestVideoFSCompliance(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// countingVideoSource wraps fakeVideoSource and counts Replays fetches.
+type countingVideoSource struct {
+	fakeVideoSource
+	replayCalls int
+	replayErr   error // when non-nil, Replays returns it instead of data
+}
+
+// Replays implements VideoSource, counting invocations.
+func (s *countingVideoSource) Replays(ctx context.Context, courseID int64) ([]video.Replay, error) {
+	s.replayCalls++
+	if s.replayErr != nil {
+		return nil, s.replayErr
+	}
+	return s.fakeVideoSource.Replays(ctx, courseID)
+}
+
+// TestListDirFetchesOnce pins that one listing resolves the directory once,
+// however many symbolic links it holds: the targets arrive with the entries
+// instead of costing one full re-resolution per link.
+func TestListDirFetchesOnce(t *testing.T) {
+	src := &countingVideoSource{fakeVideoSource: *videoFixture()}
+	fsys := New(context.Background(),
+		&fakeSource{courses: []canvas.Course{{ID: 10001, Name: "数学分析"}}}, src, nil)
+
+	entries, err := fsys.ListDir("courses/10001/replay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.replayCalls != 1 {
+		t.Errorf("Replays called %d times, want 1", src.replayCalls)
+	}
+	if len(entries) != 4 {
+		t.Errorf("entries = %d, want 4 (two recordings plus two links)", len(entries))
+	}
+	modes := map[string]fs.FileMode{}
+	targets := map[string]string{}
+	for _, e := range entries {
+		modes[e.Name] = e.Mode
+		if e.Mode&fs.ModeSymlink != 0 {
+			targets[e.Name] = e.Target
+		}
+	}
+	if !modes["111"].IsDir() || !modes["222"].IsDir() {
+		t.Errorf("recording entries are not directories: %v", modes)
+	}
+	if targets["09-28-1"] != "/courses/10001/replay/111" ||
+		targets["09-28-2"] != "/courses/10001/replay/222" {
+		t.Errorf("symlink targets = %v", targets)
+	}
+}
+
+// TestListDirNotDirectory pins the error shape for a non-directory target.
+func TestListDirNotDirectory(t *testing.T) {
+	fsys := newVideoTestFS()
+	if _, err := fsys.ListDir("courses/10001/replay/111/info"); !errors.Is(err, errNotDirectory) {
+		t.Fatalf("ListDir on a file: err = %v, want not a directory", err)
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"strings"
 	"time"
 
@@ -152,11 +151,11 @@ func runFS(fsys *vfs.FS, verb, displayPath string, human bool, stdout io.Writer)
 	name := fsName(displayPath)
 	switch verb {
 	case "ls":
-		entries, err := fs.ReadDir(fsys, name)
+		entries, err := fsys.ListDir(name)
 		if err != nil {
 			return err
 		}
-		return renderLs(fsys, displayPath, entries, human, stdout)
+		return renderLs(entries, human, stdout)
 	case "stat":
 		info, err := fs.Stat(fsys, name)
 		if err != nil {
@@ -197,20 +196,10 @@ type lsEntry struct {
 // renderLs writes a directory listing. JSON mode emits one compact array;
 // human mode prints one name per line: directories carry a "/" suffix,
 // symlinks show "name -> target".
-func renderLs(fsys *vfs.FS, displayPath string, entries []fs.DirEntry, human bool, stdout io.Writer) error {
+func renderLs(entries []vfs.DirEntry, human bool, stdout io.Writer) error {
 	out := make([]lsEntry, 0, len(entries))
 	for _, e := range entries {
-		entry := lsEntry{Name: e.Name(), Type: entryType(e)}
-		if info, err := e.Info(); err == nil {
-			entry.Size = info.Size()
-		}
-		if e.Type()&fs.ModeSymlink != 0 {
-			target, err := fsys.ReadLink(fsName(path.Join(displayPath, e.Name())))
-			if err != nil {
-				return err
-			}
-			entry.Target = target
-		}
+		entry := lsEntry{Name: e.Name, Type: entryType(e.Mode), Size: e.Size, Target: e.Target}
 		out = append(out, entry)
 		if human {
 			line := entry.Name
@@ -259,11 +248,11 @@ func renderStat(info fs.FileInfo, human bool, stdout io.Writer) error {
 }
 
 // entryType classifies a directory entry for output.
-func entryType(e fs.DirEntry) string {
+func entryType(mode fs.FileMode) string {
 	switch {
-	case e.IsDir():
+	case mode.IsDir():
 		return "dir"
-	case e.Type()&fs.ModeSymlink != 0:
+	case mode&fs.ModeSymlink != 0:
 		return "link"
 	default:
 		return "file"
