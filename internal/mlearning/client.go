@@ -66,10 +66,10 @@ func New(sess *session.Session) *Client {
 	return &Client{sess: sess, base: baseURL}
 }
 
-// Status reports whether the course has a roll call in progress, as the raw
-// existentB response (idle state: {"resultCode":"200","body":{}}).
+// Status reports the active roll call, as the raw existent response: body is
+// the sign history id while a roll call is open, null otherwise.
 func (c *Client) Status(ctx context.Context, courseID int64) (json.RawMessage, error) {
-	return c.get(ctx, "/lms-lti-rollcall-sjtu/rollcall/existentB?courseCode="+strconv.FormatInt(courseID, 10))
+	return c.get(ctx, "/lms-lti-rollcall-sjtu/rollcall/existent?courseCode="+strconv.FormatInt(courseID, 10))
 }
 
 // Records lists the caller's sign-in records of the course, as the raw

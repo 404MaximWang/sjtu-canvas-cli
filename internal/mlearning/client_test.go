@@ -164,7 +164,7 @@ func TestGetRefreshesRejectedToken(t *testing.T) {
 		}
 		return `{"resultCode":"10001","body":null}`
 	})
-	raw, err := client.get(context.Background(), "/lms-lti-rollcall-sjtu/rollcall/existentB?courseCode=1")
+	raw, err := client.get(context.Background(), "/lms-lti-rollcall-sjtu/rollcall/existent?courseCode=1")
 	if err != nil {
 		t.Fatal(err)
 	}
